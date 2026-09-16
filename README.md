@@ -38,6 +38,7 @@ Each perfume becomes a sparse vector of length 150. For every note in its list t
 | `/collection` | GET | Rows from the Supabase `collection` table, scored live against the corpus |
 | `/wishlist` | GET | Rows from the Supabase `wishlist` table, scored live against the corpus |
 | `/analyze` | POST | Score an arbitrary note list against the corpus |
+| `/clusters` | GET | A sampled, 2D-projected view of the corpus grouped into note-based fragrance types, for the clusters visualization |
 
 `/collection` and `/wishlist` query Supabase **live, on every request** — unlike the corpus, they're small (a handful of rows) and change often, so it's cheaper to fetch-then-score them per request than to keep a stale pre-scored copy in `pipeline.joblib`. Both are scored through the same `_score()` helper `/analyze` uses, so the response shape is consistent everywhere: a `stats` object (see above) plus a `matches` array of the top-`k` nearest corpus perfumes, each with `brand`, `perfume`, `notes`, and `similarity` (cosine similarity, 0–1).
 

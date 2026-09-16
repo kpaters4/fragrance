@@ -5,6 +5,7 @@ Loads the fitted pipeline.joblib bundle once at import time. /collection and
 the loaded pipeline; the corpus itself stays baked into pipeline.joblib since
 refitting NoteFingerprint per-request would be wasteful.
 """
+import random
 from typing import List
 
 import joblib
@@ -120,6 +121,61 @@ def wishlist():
     if not _artifact_loaded():
         raise HTTPException(status_code=503, detail="artifact not loaded")
     return _score_rows(_fetch_table("wishlist"))
+
+
+CLUSTER_SAMPLE_SIZE = 4000
+_clusters_cache = None
+
+
+@app.get("/clusters")
+def clusters():
+    if not _artifact_loaded():
+        raise HTTPException(status_code=503, detail="artifact not loaded")
+
+    global _clusters_cache
+    if _clusters_cache is None:
+        data = _bundle["clusters"]
+        corpus_documents = _bundle["corpus_documents"]
+        fine_cluster = data["fine_cluster"]
+        xs, ys = data["x"], data["y"]
+        fine_meta = data["fine_meta"]
+        family_labels = data["family_labels"]
+
+        rng = random.Random(42)
+        by_fine = {}
+        for idx, fine_id in enumerate(fine_cluster):
+            by_fine.setdefault(int(fine_id), []).append(idx)
+
+        total = len(corpus_documents)
+        points = []
+        for fine_id, indices in by_fine.items():
+            quota = max(1, round(len(indices) / total * CLUSTER_SAMPLE_SIZE))
+            chosen = indices if len(indices) <= quota else rng.sample(indices, quota)
+            family = fine_meta[fine_id]["family"]
+            for idx in chosen:
+                doc = corpus_documents[idx]
+                points.append(
+                    {
+                        "x": round(float(xs[idx]), 3),
+                        "y": round(float(ys[idx]), 3),
+                        "fine": fine_id,
+                        "family": family,
+                        "brand": doc["brand"],
+                        "perfume": doc["perfume"],
+                        "notes": doc["notes"],
+                    }
+                )
+
+        _clusters_cache = {
+            "families": [{"id": fam, "label": label} for fam, label in family_labels.items()],
+            "fine_clusters": [
+                {"id": fine_id, "label": meta["label"], "family": meta["family"], "count": meta["count"]}
+                for fine_id, meta in sorted(fine_meta.items())
+            ],
+            "points": points,
+        }
+
+    return _clusters_cache
 
 
 @app.post("/analyze")

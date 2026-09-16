@@ -8,9 +8,14 @@ import datetime as dt
 import json
 
 import joblib
+import numpy as np
 import sklearn
+from sklearn.cluster import KMeans
+from sklearn.decomposition import TruncatedSVD
+from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import normalize
 
 from db import get_client
 from pipeline_def import NoteFingerprint
@@ -18,6 +23,99 @@ from pipeline_def import NoteFingerprint
 ARTIFACT_PATH = "pipeline.joblib"
 VOCAB_SIZE = 150
 PAGE_SIZE = 1000
+N_FINE_CLUSTERS = 9
+RANDOM_STATE = 42
+
+# Rank-weighted keyword vote: each cluster's top notes are scored against these
+# families and assigned to whichever scores highest, so the "type" a cluster
+# gets is derived from its actual notes rather than a run-dependent cluster index.
+FAMILY_KEYWORDS = {
+    "fresh": {
+        "citrus", "citruses", "lemon", "lime", "bergamot", "grapefruit", "orange",
+        "lavender", "mint", "green notes", "green", "aquatic", "water notes",
+        "marine", "aromatic", "petitgrain", "juniper", "neroli",
+    },
+    "floral": {
+        "rose", "jasmine", "floral notes", "tuberose", "freesia", "lily-of-the-valley",
+        "peony", "violet", "iris", "orange blossom", "ylang-ylang", "heliotrope",
+        "geranium", "magnolia", "mimosa",
+    },
+    "woody": {
+        # "musk" is deliberately excluded: it's the single most common note in
+        # the corpus, so it shows up in most clusters' top notes regardless of
+        # family and would swamp the vote rather than discriminate.
+        "oud", "agarwood (oud)", "amber", "ambrox", "vanilla", "vanille",
+        "patchouli", "incense", "sandalwood", "cedar",
+        "vetiver", "leather", "tobacco", "woody notes", "woodsy notes",
+        "benzoin", "tonka bean", "saffron",
+    },
+}
+FAMILY_LABELS = {
+    "fresh": "Fresh & Green",
+    "floral": "Floral",
+    "woody": "Woody & Oriental",
+}
+
+
+def _clean_note_name(note):
+    if "(" in note:
+        return note.split("(", 1)[1].rstrip(")").strip().title()
+    return note.replace(" notes", "").strip().title()
+
+
+def _classify_family(top_notes):
+    scores = {family: 0.0 for family in FAMILY_KEYWORDS}
+    for rank, note in enumerate(top_notes):
+        weight = 1.0 / (rank + 1)
+        for family, keywords in FAMILY_KEYWORDS.items():
+            if note in keywords:
+                scores[family] += weight
+    return max(scores, key=scores.get)
+
+
+def compute_clusters(pipeline, corpus_matrix):
+    """Groups the corpus into fine-grained note clusters (for descriptive
+    labels) folded into 3 broad families (fresh/floral/woody) for coloring,
+    plus a 2D layout for plotting. Kept separate from fitting the retrieval
+    pipeline since it's for the /clusters visualization, not similarity search.
+    """
+    vocab = pipeline.named_steps["fingerprint"].vocabulary_
+    inv_vocab = {idx: note for note, idx in vocab.items()}
+
+    norm_matrix = normalize(corpus_matrix)
+
+    print("Fitting fine clusters...")
+    kmeans = KMeans(n_clusters=N_FINE_CLUSTERS, random_state=RANDOM_STATE, n_init=10)
+    fine_labels = kmeans.fit_predict(norm_matrix)
+
+    fine_meta = {}
+    for cluster_id in range(N_FINE_CLUSTERS):
+        center = kmeans.cluster_centers_[cluster_id]
+        top_idx = np.argsort(center)[::-1][:6]
+        top_notes = [inv_vocab[i] for i in top_idx if center[i] > 0]
+        family = _classify_family(top_notes)
+        label = " & ".join(_clean_note_name(n) for n in top_notes[:2]) or FAMILY_LABELS[family]
+        fine_meta[cluster_id] = {
+            "label": label,
+            "family": family,
+            "count": int(np.sum(fine_labels == cluster_id)),
+        }
+
+    print("Reducing dimensionality for layout...")
+    reduced = TruncatedSVD(n_components=30, random_state=RANDOM_STATE).fit_transform(norm_matrix)
+
+    print("Computing 2D layout (t-SNE, this takes a few minutes)...")
+    coords = TSNE(
+        n_components=2, random_state=RANDOM_STATE, init="pca", perplexity=30
+    ).fit_transform(reduced)
+
+    return {
+        "fine_cluster": fine_labels.astype(np.int16),
+        "x": coords[:, 0].astype(np.float32),
+        "y": coords[:, 1].astype(np.float32),
+        "fine_meta": fine_meta,
+        "family_labels": FAMILY_LABELS,
+    }
 
 
 def load_corpus():
@@ -55,11 +153,14 @@ def main():
     neighbor_index = NearestNeighbors(metric="cosine")
     neighbor_index.fit(corpus_matrix)
 
+    clusters = compute_clusters(pipeline, corpus_matrix)
+
     bundle = {
         "pipeline": pipeline,
         "neighbor_index": neighbor_index,
         "corpus_matrix": corpus_matrix,
         "corpus_documents": corpus_documents,
+        "clusters": clusters,
         "metadata": {
             "steps": [name for name, _ in pipeline.steps],
             "built_at": dt.datetime.utcnow().isoformat() + "Z",
