@@ -16,17 +16,19 @@ image = (
         "joblib",
         "numpy",
         "scipy",
+        "supabase",
         f"scikit-learn=={SKLEARN_VERSION}",
     )
     .add_local_file("serve.py", "/root/serve.py")
     .add_local_file("pipeline_def.py", "/root/pipeline_def.py")
+    .add_local_file("db.py", "/root/db.py")
     .add_local_file("pipeline.joblib", "/root/pipeline.joblib")
 )
 
 app = modal.App("scent-fingerprint", image=image)
 
 
-@app.function()
+@app.function(secrets=[modal.Secret.from_name("fragrance-supabase")])
 @modal.concurrent(max_inputs=20)
 @modal.asgi_app()
 def fastapi_app():

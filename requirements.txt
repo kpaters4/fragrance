@@ -3,8 +3,7 @@ uvicorn[standard]==0.53.0
 joblib==1.6.0
 numpy==2.2.6
 scipy==1.15.3
-pandas==2.3.3
-openpyxl==3.1.5
+supabase==2.31.0
 scikit-learn==1.7.2
 pydantic==2.13.5
 typing_extensions==4.16.0
