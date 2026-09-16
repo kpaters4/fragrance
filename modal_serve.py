@@ -1,4 +1,4 @@
-"""Modal deployment for the Scent Fingerprint API.
+"""Modal deployment for the Fragrance API.
 
 Deploy with: modal deploy modal_serve.py
 """

@@ -1,4 +1,4 @@
-"""Custom sklearn transformer for the Scent Fingerprint pipeline.
+"""Custom sklearn transformer for the Fragrance pipeline.
 
 Must be importable identically at build time (build.py) and serve time
 (serve.py / modal_serve.py) so joblib can unpickle fitted instances.

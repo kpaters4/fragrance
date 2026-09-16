@@ -1,4 +1,4 @@
-"""Builds the fitted pipeline.joblib artifact for the Scent Fingerprint API.
+"""Builds the fitted pipeline.joblib artifact for the Fragrance API.
 
 Run once locally: python build.py
 """

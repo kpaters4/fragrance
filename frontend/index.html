@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Scent Fingerprint</title>
+<title>Fragrance</title>
 <style>
   :root { color-scheme: light; }
   body {
@@ -72,12 +72,31 @@
     font-size: 0.85rem;
   }
   .tabs button.active { background: #6b4a3a; color: white; }
+  .info-box {
+    background: #f2ece1;
+    border: 1px solid #e4dcd1;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 28px;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: #4a4038;
+  }
+  .info-box strong { color: #2b2420; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Scent Fingerprint</h1>
+  <h1>Fragrance</h1>
   <p class="sub">Fragrance note analysis and similarity search</p>
+
+  <div class="info-box">
+    <strong>How it works:</strong> type in the notes of a scent you like (e.g. "sandalwood, iris, leather, musk"),
+    separated by commas, and hit Analyze. We compare that note list against a corpus of perfumes and
+    return the closest matches, weighted so rarer notes count more than common ones. Use the
+    <strong>My fragrances</strong> section below to browse your own collection and wishlist, each pre-matched
+    against the same corpus.
+  </div>
 
   <section>
     <h2>Analyze notes</h2>

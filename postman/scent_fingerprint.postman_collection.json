@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Scent Fingerprint API",
-    "description": "Tests against the deployed Modal URL for the Scent Fingerprint API.",
+    "name": "Fragrance API",
+    "description": "Tests against the deployed Modal URL for the Fragrance API.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

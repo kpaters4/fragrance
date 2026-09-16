@@ -1,4 +1,4 @@
-"""FastAPI service for the Scent Fingerprint API.
+"""FastAPI service for the Fragrance API.
 
 Loads the fitted pipeline.joblib bundle once at import time.
 """
@@ -14,7 +14,7 @@ from pipeline_def import NoteFingerprint  # noqa: F401 -- required for joblib un
 
 ARTIFACT_PATH = "pipeline.joblib"
 
-app = FastAPI(title="Scent Fingerprint API")
+app = FastAPI(title="Fragrance API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
