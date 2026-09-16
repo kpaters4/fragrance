@@ -1,0 +1,162 @@
+{
+  "info": {
+    "name": "Scent Fingerprint API",
+    "description": "Tests against the deployed Modal URL for the Scent Fingerprint API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://kpaters4--scent-fingerprint-fastapi-app.modal.run",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "GET /health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /info",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/info", "host": ["{{base_url}}"], "path": ["info"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Body has sklearn_version and corpus_size', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json).to.have.property('sklearn_version');",
+              "    pm.expect(json).to.have.property('corpus_size');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /analyze (valid)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"notes\": [\"sandalwood\", \"iris\", \"leather\", \"musk\"],\n  \"k\": 5\n}"
+        },
+        "url": { "raw": "{{base_url}}/analyze", "host": ["{{base_url}}"], "path": ["analyze"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has expected shape', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json).to.have.property('stats');",
+              "    pm.expect(json.stats).to.have.property('note_count');",
+              "    pm.expect(json.stats).to.have.property('known_note_count');",
+              "    pm.expect(json.stats).to.have.property('avg_rarity');",
+              "    pm.expect(json.stats).to.have.property('diversity');",
+              "    pm.expect(json).to.have.property('matches');",
+              "    pm.expect(json.matches).to.be.an('array');",
+              "    if (json.matches.length > 0) {",
+              "        pm.expect(json.matches[0]).to.have.property('brand');",
+              "        pm.expect(json.matches[0]).to.have.property('perfume');",
+              "        pm.expect(json.matches[0]).to.have.property('notes');",
+              "        pm.expect(json.matches[0]).to.have.property('similarity');",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /analyze (invalid - empty notes)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"notes\": [],\n  \"k\": 5\n}"
+        },
+        "url": { "raw": "{{base_url}}/analyze", "host": ["{{base_url}}"], "path": ["analyze"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 422', function () {",
+              "    pm.response.to.have.status(422);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /analyze (invalid - k too large)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"notes\": [\"rose\", \"oud\"],\n  \"k\": 999\n}"
+        },
+        "url": { "raw": "{{base_url}}/analyze", "host": ["{{base_url}}"], "path": ["analyze"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 422', function () {",
+              "    pm.response.to.have.status(422);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

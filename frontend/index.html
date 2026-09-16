@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scent Fingerprint</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #faf7f2;
+    color: #2b2420;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .sub { color: #7a6f63; margin-top: 0; margin-bottom: 28px; }
+  section { margin-bottom: 40px; }
+  h2 { font-size: 1.1rem; border-bottom: 1px solid #e4dcd1; padding-bottom: 8px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type="text"] {
+    flex: 1 1 260px;
+    padding: 10px 12px;
+    border: 1px solid #cfc3b3;
+    border-radius: 6px;
+    font-size: 0.95rem;
+  }
+  input[type="number"] {
+    width: 70px;
+    padding: 10px 8px;
+    border: 1px solid #cfc3b3;
+    border-radius: 6px;
+    font-size: 0.95rem;
+  }
+  button {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 6px;
+    background: #6b4a3a;
+    color: white;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
+  .stat {
+    background: white;
+    border: 1px solid #e4dcd1;
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 110px;
+  }
+  .stat .label { font-size: 0.72rem; color: #918476; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .value { font-size: 1.15rem; font-weight: 600; }
+  ul.matches, ul.plain-list { list-style: none; padding: 0; margin: 0; }
+  ul.matches li, ul.plain-list li {
+    background: white;
+    border: 1px solid #e4dcd1;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .match-head { display: flex; justify-content: space-between; font-weight: 600; }
+  .match-notes { color: #7a6f63; font-size: 0.85rem; margin-top: 4px; }
+  .error { color: #a33; margin-top: 10px; }
+  .muted { color: #918476; font-size: 0.9rem; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tabs button {
+    background: #efe6da;
+    color: #6b4a3a;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+  }
+  .tabs button.active { background: #6b4a3a; color: white; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Scent Fingerprint</h1>
+  <p class="sub">Fragrance note analysis and similarity search</p>
+
+  <section>
+    <h2>Analyze notes</h2>
+    <form id="analyze-form">
+      <input type="text" id="notes-input" placeholder="e.g. sandalwood, iris, leather, musk" required />
+      <input type="number" id="k-input" min="1" max="20" value="5" title="number of matches" />
+      <button type="submit" id="analyze-btn">Analyze</button>
+    </form>
+    <div id="analyze-error" class="error"></div>
+    <div id="analyze-results"></div>
+  </section>
+
+  <section>
+    <h2>My fragrances</h2>
+    <div class="tabs">
+      <button id="tab-collection" class="active">Collection</button>
+      <button id="tab-wishlist">Wishlist</button>
+    </div>
+    <div id="list-error" class="error"></div>
+    <ul class="plain-list" id="list-results"><li class="muted">Loading…</li></ul>
+  </section>
+</div>
+
+<script>
+  // Must point at the deployed Modal URL. No localhost, no mocked data.
+  const API_BASE = "https://kpaters4--scent-fingerprint-fastapi-app.modal.run";
+
+  const analyzeForm = document.getElementById("analyze-form");
+  const notesInput = document.getElementById("notes-input");
+  const kInput = document.getElementById("k-input");
+  const analyzeBtn = document.getElementById("analyze-btn");
+  const analyzeError = document.getElementById("analyze-error");
+  const analyzeResults = document.getElementById("analyze-results");
+
+  function renderStats(stats) {
+    return `
+      <div class="stats-row">
+        <div class="stat"><div class="label">Notes</div><div class="value">${stats.note_count}</div></div>
+        <div class="stat"><div class="label">Known</div><div class="value">${stats.known_note_count}</div></div>
+        <div class="stat"><div class="label">Avg rarity</div><div class="value">${stats.avg_rarity.toFixed(2)}</div></div>
+        <div class="stat"><div class="label">Diversity</div><div class="value">${(stats.diversity * 100).toFixed(0)}%</div></div>
+      </div>`;
+  }
+
+  function renderMatches(matches) {
+    if (!matches.length) return '<p class="muted">No matches found.</p>';
+    const items = matches.map(m => `
+      <li>
+        <div class="match-head">
+          <span>${m.brand} — ${m.perfume}</span>
+          <span>${(m.similarity * 100).toFixed(1)}%</span>
+        </div>
+        <div class="match-notes">${m.notes}</div>
+      </li>`).join("");
+    return `<ul class="matches">${items}</ul>`;
+  }
+
+  analyzeForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    analyzeError.textContent = "";
+    analyzeResults.innerHTML = "";
+    const notes = notesInput.value.split(",").map(n => n.trim()).filter(Boolean);
+    const k = parseInt(kInput.value, 10) || 5;
+
+    if (!notes.length) {
+      analyzeError.textContent = "Enter at least one note.";
+      return;
+    }
+
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = "Analyzing…";
+
+    try {
+      const res = await fetch(`${API_BASE}/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes, k }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail ? JSON.stringify(body.detail) : `Request failed (${res.status})`);
+      }
+      const data = await res.json();
+      analyzeResults.innerHTML = renderStats(data.stats) + renderMatches(data.matches);
+    } catch (err) {
+      analyzeError.textContent = err.message || "Something went wrong.";
+    } finally {
+      analyzeBtn.disabled = false;
+      analyzeBtn.textContent = "Analyze";
+    }
+  });
+
+  const tabCollection = document.getElementById("tab-collection");
+  const tabWishlist = document.getElementById("tab-wishlist");
+  const listResults = document.getElementById("list-results");
+  const listError = document.getElementById("list-error");
+
+  function renderList(rows) {
+    if (!rows.length) return '<li class="muted">Nothing here yet.</li>';
+    return rows.map(row => `
+      <li>
+        <div class="match-head"><span>${row.brand} — ${row.perfume}</span></div>
+        <div class="match-notes">${row.notes}</div>
+        <div class="match-notes">Closest match: ${row.matches[0] ? `${row.matches[0].brand} — ${row.matches[0].perfume} (${(row.matches[0].similarity * 100).toFixed(1)}%)` : "n/a"}</div>
+      </li>`).join("");
+  }
+
+  async function loadList(endpoint) {
+    listError.textContent = "";
+    listResults.innerHTML = '<li class="muted">Loading…</li>';
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`);
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const data = await res.json();
+      listResults.innerHTML = renderList(data);
+    } catch (err) {
+      listResults.innerHTML = "";
+      listError.textContent = err.message || "Failed to load.";
+    }
+  }
+
+  tabCollection.addEventListener("click", () => {
+    tabCollection.classList.add("active");
+    tabWishlist.classList.remove("active");
+    loadList("/collection");
+  });
+  tabWishlist.addEventListener("click", () => {
+    tabWishlist.classList.add("active");
+    tabCollection.classList.remove("active");
+    loadList("/wishlist");
+  });
+
+  loadList("/collection");
+</script>
+</body>
+</html>
