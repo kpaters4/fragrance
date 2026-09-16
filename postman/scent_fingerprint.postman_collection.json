@@ -61,6 +61,72 @@
       ]
     },
     {
+      "name": "GET /collection",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/collection", "host": ["{{base_url}}"], "path": ["collection"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Body is an array of scored rows', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json).to.be.an('array');",
+              "    if (json.length > 0) {",
+              "        pm.expect(json[0]).to.have.property('brand');",
+              "        pm.expect(json[0]).to.have.property('perfume');",
+              "        pm.expect(json[0]).to.have.property('notes');",
+              "        pm.expect(json[0]).to.have.property('stats');",
+              "        pm.expect(json[0]).to.have.property('matches');",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /wishlist",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/wishlist", "host": ["{{base_url}}"], "path": ["wishlist"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Body is an array of scored rows', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json).to.be.an('array');",
+              "    if (json.length > 0) {",
+              "        pm.expect(json[0]).to.have.property('brand');",
+              "        pm.expect(json[0]).to.have.property('perfume');",
+              "        pm.expect(json[0]).to.have.property('notes');",
+              "        pm.expect(json[0]).to.have.property('stats');",
+              "        pm.expect(json[0]).to.have.property('matches');",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
       "name": "POST /analyze (valid)",
       "request": {
         "method": "POST",
