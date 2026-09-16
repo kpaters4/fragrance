@@ -1,6 +1,6 @@
 # Fragrance
 
-Live site: https://frontend-delta-neon-65.vercel.app/
+Live site: https://fragrance-azure.vercel.app/
 
 Finds perfumes with similar scent profiles by comparing their listed notes. Notes are converted into TF-IDF-style vectors and matched against a corpus via cosine nearest-neighbors, so "sandalwood, cardamom, iris" finds perfumes that share the same rare/common note mix rather than just an exact-string match.
 
