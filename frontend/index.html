@@ -1423,9 +1423,25 @@
   // Clicking a node pins the highlight so it survives the mouse moving off
   // it -- lets you click a subfamily, then move the cursor along its
   // ribbons to read their individual tooltips without losing the
-  // isolation. Takes priority over hoveredCompare whenever set; cleared by
-  // clicking the same node again or clicking outside the diagram.
+  // isolation. hoveredCompare always wins live; this is only the resting
+  // (nothing actively hovered) fallback. Cleared by clicking the same node
+  // again or clicking outside the diagram.
   let pinnedCompare = null;
+  // Hovering a ribbon spotlights the whole group on whichever side of the
+  // circle the cursor is nearer -- the wheel subfamily's spread if you're
+  // over the left half, the emerged cluster's spread if you're over the
+  // right half -- rather than highlighting both endpoints' groups at once,
+  // which read as "highlighting all over the place". Only kicks in at rest
+  // (nothing hovered/pinned already); once something is selected, ribbon
+  // hover is for reading tooltips instead, not for changing what's
+  // highlighted.
+  let hoveredCompareLink = null; // { l, side: "wheel"|"emerged" }
+
+  function cmpSideFromEvent(e) {
+    const rect = compareSvg.getBoundingClientRect();
+    const localX = (e.clientX - rect.left) / rect.width * 640;
+    return localX < CMP.cx ? "wheel" : "emerged";
+  }
 
   function toggleComparePin(side, id) {
     pinnedCompare = (pinnedCompare && pinnedCompare.side === side && pinnedCompare.id === id)
@@ -1579,9 +1595,34 @@
       hit.addEventListener("mouseenter", (e) => {
         const pct = Math.round((l.count / wheelById[l.wheel].count) * 100);
         cmpShowTooltip(e, `<div class="tt-brand">${l.count.toLocaleString()} fragrances</div>${wheelById[l.wheel].label} &rarr; ${emergedById[l.emerged].label} (${pct}%)`);
+        if (!hoveredCompare && !pinnedCompare) {
+          hoveredCompareLink = { l, side: cmpSideFromEvent(e) };
+          updateCompareHighlight();
+        }
       });
-      hit.addEventListener("mousemove", (e) => cmpShowTooltip(e, compareTooltip.innerHTML));
-      hit.addEventListener("mouseleave", cmpHideTooltip);
+      hit.addEventListener("mousemove", (e) => {
+        cmpShowTooltip(e, compareTooltip.innerHTML);
+        if (!hoveredCompare && !pinnedCompare) {
+          const side = cmpSideFromEvent(e);
+          if (!hoveredCompareLink || hoveredCompareLink.l !== l || hoveredCompareLink.side !== side) {
+            hoveredCompareLink = { l, side };
+            updateCompareHighlight();
+          }
+        }
+      });
+      hit.addEventListener("mouseleave", () => {
+        cmpHideTooltip();
+        if (hoveredCompareLink && hoveredCompareLink.l === l) {
+          hoveredCompareLink = null;
+          updateCompareHighlight();
+        }
+      });
+      hit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const side = cmpSideFromEvent(e);
+        hoveredCompareLink = null;
+        toggleComparePin(side, side === "wheel" ? l.wheel : l.emerged);
+      });
       linksLayer.appendChild(hit);
 
       const path = document.createElementNS(svgNS, "path");
@@ -1648,22 +1689,36 @@
     // still highlights whatever's under the cursor, and only falls back to
     // the pinned one when you're not actively hovering anything.
     const current = hoveredCompare || pinnedCompare;
+    // A hovered ribbon highlights the group on whichever side of the
+    // circle the cursor is over (see cmpSideFromEvent) -- resolved down to
+    // the same { side, id } shape a real node hover produces, so it drives
+    // the exact same highlight logic below. Only kicks in when nothing
+    // else is already selected -- once a node is hovered/pinned, ribbon
+    // hover goes back to just being a tooltip trigger (see the hit
+    // mouseenter/mousemove/mouseleave handlers, which only set this while
+    // current is falsy).
+    const link = !current ? hoveredCompareLink : null;
+    const effective = current || (link && {
+      side: link.side,
+      id: link.side === "wheel" ? link.l.wheel : link.l.emerged,
+    });
+    const dimmed = !!effective;
     cmp.linkEls.forEach(({ l, path, hit, width, restVisible }) => {
-      const active = current && (
-        (current.side === "wheel" && current.id === l.wheel)
-        || (current.side === "emerged" && current.id === l.emerged)
+      const active = effective && (
+        (effective.side === "wheel" && effective.id === l.wheel)
+        || (effective.side === "emerged" && effective.id === l.emerged)
       );
       path.setAttribute("stroke-width", active ? width + 1 : width);
-      path.setAttribute("opacity", current ? (active ? 0.85 : 0.03) : (restVisible ? 0.4 : 0.03));
-      hit.style.pointerEvents = current && !active ? "none" : "auto";
-      if (current && !active) cmpHideTooltip();
+      path.setAttribute("opacity", dimmed ? (active ? 0.85 : 0.03) : (restVisible ? 0.4 : 0.03));
+      hit.style.pointerEvents = dimmed && !active ? "none" : "auto";
+      if (dimmed && !active) cmpHideTooltip();
     });
     cmp.nodeEls.forEach(({ side, id, arc, text }) => {
-      const active = current && current.side === side && current.id === id;
-      arc.setAttribute("opacity", !current || active ? 1 : 0.35);
+      const active = effective && effective.side === side && effective.id === id;
+      arc.setAttribute("opacity", !dimmed || active ? 1 : 0.35);
       text.classList.toggle("active", !!active);
     });
-    if (hoveredCompare) {
+    if (hoveredCompare || link) {
       compareHint.textContent = "Click a subfamily or cluster to pin it while you explore its ribbons.";
     } else if (pinnedCompare) {
       compareHint.textContent = "Pinned -- click it again, or click outside the diagram, to reset.";
