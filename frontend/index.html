@@ -166,9 +166,18 @@
     font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); cursor: pointer;
   }
   .detail-similar:hover { color: var(--ink); }
-  .info-list { margin-top: 20px; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
+  .info-list {
+    margin-top: 20px; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column;
+    scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
+  }
   .info-list .match-row:last-child { border-bottom: none; }
+  .info-list::-webkit-scrollbar { width: 4px; }
+  .info-list::-webkit-scrollbar-track { background: transparent; }
+  .info-list::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 999px; }
+  .info-list::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
   .info-list-more { font-size: 12px; color: var(--faint); padding: 10px 0 0; }
+  .wheel-img { display: block; width: 100%; border-radius: 10px; margin: 2px 0 16px; }
+  .wheel-link { display: block; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -207,7 +216,7 @@
     <div class="top">
       <div>
         <div class="wordmark">Fragrance Map</div>
-        <div class="tagline">Explore fragrances by their notes and find similar ones.</div>
+        <div class="tagline">Explore fragrances by their notes and find similar ones. <a href="#" id="wheel-info-link">Learn more about the fragrance wheel.</a></div>
       </div>
       <div class="top-right">
         <div class="corpus-count" id="corpus-count"></div>
@@ -363,6 +372,26 @@
   infoClose.addEventListener("click", closeInfo);
   infoOverlay.addEventListener("click", (e) => {
     if (e.target === infoOverlay) closeInfo();
+  });
+
+  function openWheelInfo() {
+    infoEyebrow.textContent = "About";
+    infoTitle.textContent = "The Fragrance Wheel";
+    infoBody.innerHTML = `
+      <img class="wheel-img" src="fragrance-wheel.png" alt="Michael Edwards Fragrance Wheel" />
+      Devised by fragrance critic Michael Edwards, the wheel groups fragrances into four main
+      families -- Floral, Amber, Woody, and Fresh -- each split into related subfamilies, arranged
+      so that neighboring families share a similar character. This map places every fragrance by
+      its notes and colors it by the wheel family it falls into.
+      <a class="wheel-link" href="https://en.wikipedia.org/wiki/Fragrance_wheel" target="_blank" rel="noopener noreferrer">Read more on Wikipedia &rarr;</a>
+    `;
+    renderInfoList();
+    infoOverlay.classList.add("visible");
+  }
+
+  document.getElementById("wheel-info-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    openWheelInfo();
   });
 
   // --- Theme ---
@@ -697,20 +726,11 @@
         drawDots(hoverIndex);
         updateLabelActiveStates();
       });
-      el.addEventListener("click", (e) => {
+      el.addEventListener("click", () => {
         const fineId = el.dataset.fine;
-        // Dots packed directly under a label pill would otherwise be
-        // unreachable (the pill sits on top and eats the click) -- if the
-        // click lands right on one, treat it as a dot click instead of
-        // opening the subfamily popup.
-        const rect = mapCanvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        const idx = findNearestIndex(mx, my, rect.width, rect.height, 8);
-        if (idx >= 0) {
-          openDetail(clusterState.points[idx]);
-          return;
-        }
+        // Clicking a label always opens its subfamily popup, even when a
+        // dot sits directly underneath -- the popup's member list is how
+        // you reach dots packed too tightly under a pill to click directly.
         const meta = clusterState.fineLabelById[fineId];
         if (!meta) return;
         const members = clusterState.points
