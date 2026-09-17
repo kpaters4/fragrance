@@ -155,6 +155,8 @@
               "    pm.expect(json.stats).to.have.property('known_note_count');",
               "    pm.expect(json.stats).to.have.property('avg_rarity');",
               "    pm.expect(json.stats).to.have.property('diversity');",
+              "    pm.expect(json.stats).to.have.property('niche_score');",
+              "    pm.expect(json.stats.niche_score).to.be.within(0, 100);",
               "    pm.expect(json).to.have.property('matches');",
               "    pm.expect(json.matches).to.be.an('array');",
               "    if (json.matches.length > 0) {",
@@ -217,6 +219,47 @@
             "exec": [
               "pm.test('Status code is 422', function () {",
               "    pm.response.to.have.status(422);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /clusters",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/clusters", "host": ["{{base_url}}"], "path": ["clusters"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Body has families, fine_clusters, points', function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json).to.have.property('families').that.is.an('array');",
+              "    pm.expect(json).to.have.property('fine_clusters').that.is.an('array');",
+              "    pm.expect(json).to.have.property('points').that.is.an('array');",
+              "    if (json.families.length > 0) {",
+              "        pm.expect(json.families[0]).to.have.property('id');",
+              "        pm.expect(json.families[0]).to.have.property('label');",
+              "    }",
+              "    if (json.points.length > 0) {",
+              "        pm.expect(json.points[0]).to.have.property('x');",
+              "        pm.expect(json.points[0]).to.have.property('y');",
+              "        pm.expect(json.points[0]).to.have.property('fine');",
+              "        pm.expect(json.points[0]).to.have.property('family');",
+              "        pm.expect(json.points[0]).to.have.property('brand');",
+              "        pm.expect(json.points[0]).to.have.property('perfume');",
+              "        pm.expect(json.points[0]).to.have.property('notes');",
+              "    }",
               "});"
             ],
             "type": "text/javascript"

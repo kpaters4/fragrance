@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 
 from db import get_client
-from pipeline_def import NoteFingerprint  # noqa: F401 -- required for joblib unpickling
+from pipeline_def import NicheScorer, NoteFingerprint  # noqa: F401 -- required for joblib unpickling
 
 ARTIFACT_PATH = "pipeline.joblib"
 
@@ -53,8 +53,22 @@ def _score(notes_string, k=5):
     neighbor_index = _bundle["neighbor_index"]
     corpus_documents = _bundle["corpus_documents"]
 
-    vector = pipeline.transform([notes_string])
-    stats = pipeline.named_steps["fingerprint"].describe(notes_string)
+    fingerprint = pipeline.named_steps["fingerprint"]
+    niche = pipeline.named_steps["niche"]
+
+    # pipeline.transform() now returns the niche step's output, not the raw
+    # fingerprint vector -- go through the named step for the match vector.
+    vector = fingerprint.transform([notes_string])
+    stats = fingerprint.describe(notes_string)
+
+    niche_row = niche.transform(vector)[0]
+    stats["niche_score"] = float(niche_row[0])
+    stats["niche_percentile_label"] = f"More niche than {stats['niche_score']:.0f}% of the corpus"
+    stats["niche_components"] = {
+        "isolation_percentile": float(niche_row[1]),
+        "rarity_percentile": float(niche_row[2]),
+        "cluster_rarity_percentile": float(niche_row[3]),
+    }
 
     distances, indices = neighbor_index.kneighbors(vector, n_neighbors=k)
     matches = [
@@ -166,8 +180,13 @@ def clusters():
                     }
                 )
 
+        present_families = {meta["family"] for meta in fine_meta.values()}
         _clusters_cache = {
-            "families": [{"id": fam, "label": label} for fam, label in family_labels.items()],
+            "families": [
+                {"id": fam, "label": label}
+                for fam, label in family_labels.items()
+                if fam in present_families
+            ],
             "fine_clusters": [
                 {"id": fine_id, "label": meta["label"], "family": meta["family"], "count": meta["count"]}
                 for fine_id, meta in sorted(fine_meta.items())

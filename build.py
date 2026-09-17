@@ -18,12 +18,13 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import normalize
 
 from db import get_client
-from pipeline_def import NoteFingerprint
+from pipeline_def import NicheScorer, NoteFingerprint
 
 ARTIFACT_PATH = "pipeline.joblib"
-VOCAB_SIZE = 150
+MIN_DF = 2
 PAGE_SIZE = 1000
 N_FINE_CLUSTERS = 9
+NICHE_K_NEIGHBORS = 10
 RANDOM_STATE = 42
 
 # Rank-weighted keyword vote: each cluster's top notes are scored against these
@@ -32,8 +33,11 @@ RANDOM_STATE = 42
 FAMILY_KEYWORDS = {
     "fresh": {
         "citrus", "citruses", "lemon", "lime", "bergamot", "grapefruit", "orange",
-        "lavender", "mint", "green notes", "green", "aquatic", "water notes",
-        "marine", "aromatic", "petitgrain", "juniper", "neroli",
+        "green notes", "green", "petitgrain", "neroli",
+    },
+    "aromatic_aquatic": {
+        "lavender", "mint", "aquatic", "water notes", "marine", "ozonic",
+        "aromatic", "juniper", "rosemary", "sage", "sea notes",
     },
     "floral": {
         "rose", "jasmine", "floral notes", "tuberose", "freesia", "lily-of-the-valley",
@@ -44,16 +48,25 @@ FAMILY_KEYWORDS = {
         # "musk" is deliberately excluded: it's the single most common note in
         # the corpus, so it shows up in most clusters' top notes regardless of
         # family and would swamp the vote rather than discriminate.
-        "oud", "agarwood (oud)", "amber", "ambrox", "vanilla", "vanille",
-        "patchouli", "incense", "sandalwood", "cedar",
-        "vetiver", "leather", "tobacco", "woody notes", "woodsy notes",
-        "benzoin", "tonka bean", "saffron",
+        "oud", "agarwood (oud)", "sandalwood", "cedar", "vetiver", "leather",
+        "tobacco", "woody notes", "woodsy notes", "patchouli", "oakmoss", "birch",
+    },
+    "oriental_amber": {
+        "amber", "ambrox", "incense", "benzoin", "myrrh", "labdanum",
+        "saffron", "cardamom", "pink pepper",
+    },
+    "gourmand": {
+        "vanilla", "vanille", "tonka bean", "praline", "caramel", "chocolate",
+        "honey", "coffee", "almond", "coconut",
     },
 }
 FAMILY_LABELS = {
-    "fresh": "Fresh & Green",
+    "fresh": "Fresh & Citrus",
+    "aromatic_aquatic": "Aromatic & Aquatic",
     "floral": "Floral",
-    "woody": "Woody & Oriental",
+    "woody": "Woody",
+    "oriental_amber": "Oriental & Amber",
+    "gourmand": "Gourmand",
 }
 
 
@@ -146,9 +159,15 @@ def main():
     print(f"Corpus size after filtering: {len(corpus_documents)}")
     notes_series = [d["notes"] for d in corpus_documents]
 
-    pipeline = Pipeline([("fingerprint", NoteFingerprint(vocab_size=VOCAB_SIZE))])
+    pipeline = Pipeline([
+        ("fingerprint", NoteFingerprint(min_df=MIN_DF)),
+        ("niche", NicheScorer(n_clusters=N_FINE_CLUSTERS, k_neighbors=NICHE_K_NEIGHBORS,
+                               random_state=RANDOM_STATE)),
+    ])
     pipeline.fit(notes_series)
-    corpus_matrix = pipeline.transform(notes_series)
+    # pipeline.transform() now returns the niche step's output, not the raw
+    # fingerprint vector -- go through the named step for the corpus matrix.
+    corpus_matrix = pipeline.named_steps["fingerprint"].transform(notes_series)
 
     neighbor_index = NearestNeighbors(metric="cosine")
     neighbor_index.fit(corpus_matrix)
@@ -166,6 +185,7 @@ def main():
             "built_at": dt.datetime.utcnow().isoformat() + "Z",
             "sklearn_version": sklearn.__version__,
             "corpus_size": len(corpus_documents),
+            "vocab_size": pipeline.named_steps["fingerprint"].vocab_size_,
         },
     }
 

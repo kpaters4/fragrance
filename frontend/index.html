@@ -192,7 +192,9 @@
         <div class="stat"><div class="label">Known</div><div class="value">${stats.known_note_count}</div></div>
         <div class="stat"><div class="label">Avg rarity</div><div class="value">${stats.avg_rarity.toFixed(2)}</div></div>
         <div class="stat"><div class="label">Diversity</div><div class="value">${(stats.diversity * 100).toFixed(0)}%</div></div>
-      </div>`;
+        <div class="stat"><div class="label">Niche score</div><div class="value">${stats.niche_score.toFixed(0)}</div></div>
+      </div>
+      <p class="muted" style="margin-top: -8px;">${stats.niche_percentile_label}</p>`;
   }
 
   function renderMatches(matches) {
@@ -286,7 +288,14 @@
   loadList("/collection");
 
   // --- Fragrance clusters ---
-  const FAMILY_COLORS = { fresh: "#2a78d6", floral: "#eb6834", woody: "#1baf7a" };
+  const FAMILY_COLORS = {
+    fresh: "#2a78d6",
+    floral: "#eb6834",
+    woody: "#1baf7a",
+    aromatic_aquatic: "#eda100",
+    oriental_amber: "#e87ba4",
+    gourmand: "#008300",
+  };
 
   const clustersCanvas = document.getElementById("clusters-canvas");
   const clustersTooltip = document.getElementById("clusters-tooltip");
