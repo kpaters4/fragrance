@@ -1213,7 +1213,9 @@
     `).join("");
     locateResultsEl.querySelectorAll(".locate-result").forEach((el) => {
       el.addEventListener("click", () => {
-        locateOnMap(lastLocateResults[Number(el.dataset.idx)]);
+        const point = lastLocateResults[Number(el.dataset.idx)];
+        locateInput.value = point.perfume;
+        locateOnMap(point);
         locateRequestId++; // discard any in-flight search so a late response can't repopulate this
         locateResultsEl.innerHTML = "";
       });
@@ -1280,7 +1282,9 @@
   // mouse. The fragrance may not be one of the ~4,000 points sampled onto
   // the map, so splice it in as its own point (by identity, so relocating
   // the same fragrance twice doesn't add duplicates) rather than requiring
-  // it to already be there.
+  // it to already be there. Deliberately doesn't open the detail popup --
+  // the notes autofill + analysis below already surfaces everything about
+  // it; the popup stays reserved for clicking an actual dot on the map.
   function locateOnMap(point) {
     if (!clusterState) return;
     let idx = clusterState.points.findIndex(
@@ -1308,7 +1312,6 @@
     redrawMap(hoverIndex);
     updateZoomControls();
     closeInfo();
-    openDetail(p);
     notesInput.value = p.notes;
     analyze();
   }
