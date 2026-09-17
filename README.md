@@ -42,6 +42,17 @@ Composed after `NoteFingerprint` (`Pipeline([("fingerprint", NoteFingerprint()),
 
 `fit()` learns a reference distribution for each of the three signals across the whole corpus; `transform()` converts a query's raw signals into percentiles against those references and combines them into `niche_score` (0–100, e.g. "more niche than 82% of the corpus"). It works identically for corpus rows or a brand-new query vector, since both `NearestNeighbors.kneighbors()` and `KMeans.predict()` handle held-out points natively.
 
+### Clusters (the map)
+
+Built by `compute_clusters()` in `build.py`, separately from the retrieval pipeline above — this is only for the `/clusters` visualization, not similarity search.
+
+1. Fit a `KMeans` with `N_FINE_CLUSTERS=14` on the normalized corpus fingerprint vectors. Fourteen is chosen to match the number of named subfamilies on the **Michael Edwards Fragrance Wheel**, the standard reference used across the perfume industry: 4 main families — Floral, Oriental, Woody, Fresh — each split into 3–5 named subfamilies (`SUBFAMILY_KEYWORDS` in `build.py`), e.g. Floral splits into Floral / Soft Floral / Floral Oriental, Woody splits into Woody / Mossy Woods / Dry Woods.
+2. For each of the 14 KMeans clusters, take its top 6 notes by centroid weight and vote them (rank-weighted, so the strongest note counts most) against every subfamily's keyword set. The cluster is labeled with whichever subfamily wins — e.g. a cluster whose top notes are oud, patchouli, and sandalwood gets labeled **"Woody Oriental"**. The main family shown in the legend and used for the dot color (Floral/Oriental/Woody/Fresh) is just a fixed lookup from that subfamily.
+3. Not every one of the 14 subfamilies necessarily wins a cluster — if the corpus doesn't have a clear "Water"-type pocket, for instance, no cluster gets labeled that. Multiple clusters can also land on the same subfamily (this corpus has several clusters that all vote "Floral"): the labels are a best-effort classification from note keywords, not a guarantee of 14 evenly-sized, uniquely-named groups.
+4. Separately, `TruncatedSVD` then `t-SNE` reduce the same fingerprint vectors to 2D coordinates purely for plotting — this layout has no bearing on the cluster labels or families, it just lays similar perfumes near each other on the map.
+
+The bundle stores per-perfume `(x, y, fine_cluster_id)` plus each fine cluster's `{label, family, count}`; `GET /clusters` samples this down to ~4,000 points (proportionally per cluster) for the frontend to render. On the map, hovering a family in the legend dims every other family's dots, and clicking a dot (or a result in "Nearest") opens that fragrance's details.
+
 ## The API
 
 `serve.py` is a FastAPI app. On startup it loads `pipeline.joblib` — a bundle (built by `build.py`) containing the fitted two-step pipeline (`NoteFingerprint` + `NicheScorer`), a separate fitted `NearestNeighbors` index for similarity search, precomputed cluster/family data for the `/clusters` map, and the corpus documents (`brand`/`perfume`/`notes`) the indexes point into. That bundle is expensive to build (it requires the whole 37k-row corpus, KMeans, and a t-SNE layout) but cheap to load, so it's built once offline and just deserialized at request time — no per-request refitting.
