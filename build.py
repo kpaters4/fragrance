@@ -28,16 +28,16 @@ PAGE_SIZE = 1000
 # as its own constant so retuning the map's resolution never silently
 # changes niche scoring.
 NICHE_CLUSTERS = 14
-# The map's fine-grained clustering. Deliberately more than the 14 named
-# Fragrance Wheel subfamilies (see SUBFAMILY_KEYWORDS below) -- some
-# subfamilies (aquatic, fruity, dry-wood notes) are rarely any single
-# cluster's dominant character at coarser resolution, so a strict 14-cluster
-# / 14-subfamily bijection forced a few clusters into names that didn't
-# match their actual notes at all. At this resolution every subfamily has a
-# real, distinctly-matching cluster; see _assign_subfamilies for how a
-# popular subfamily (e.g. Floral) ends up covering several clusters while a
-# rarer one (e.g. Water) still gets exactly the one it best matches.
-MAP_FINE_CLUSTERS = 40
+# The map's fine-grained clustering -- one per named Fragrance Wheel
+# subfamily (see SUBFAMILY_KEYWORDS below). A higher value here lets rare
+# subfamilies (aquatic, fruity, dry-wood notes) get a cluster that's
+# genuinely dominated by their notes instead of forcing a 14-way bijection
+# onto whatever's left over -- but the /clusters 2D layout (a fixed t-SNE
+# perplexity, see compute_clusters) wasn't built to visually resolve much
+# more than ~14 regions, so raising this without also retuning that layout
+# makes individual clusters look scattered on the map even when they're
+# genuinely cohesive in the underlying note vectors.
+MAP_FINE_CLUSTERS = 14
 # How many of a cluster's top centroid-weighted notes get scored against the
 # subfamily keyword sets when labeling it.
 TOP_NOTES_FOR_LABELING = 10

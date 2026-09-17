@@ -54,6 +54,16 @@ Built by `compute_clusters()` in `build.py`, separately from the retrieval pipel
 
 The bundle stores per-perfume `(x, y, fine_cluster_id)` plus each fine cluster's `{label, family, count}`; `GET /clusters` samples this down to ~4,000 points (proportionally per cluster) for the frontend to render. On the map, hovering a family in the legend dims every other family's dots, hovering a subfamily label dims everything outside that one cluster, and clicking a dot (or a result in "Nearest") opens that fragrance's details.
 
+#### Picking `k` for the emerged-cluster view
+
+Forcing every fragrance into exactly one of the 14 named wheel subfamilies means a few subfamilies (aquatic and dry-wood notes especially) rarely dominate any cluster's centroid, since they're almost always a minor note layered under something else — so the map is moving toward showing *both* the classic wheel labeling above *and* a second view of how the corpus's note vectors group on their own, so the two can be compared directly. That second, data-driven cluster count isn't hand-picked to match the wheel; it's chosen from the data.
+
+<img src="docs/elbow-graph.png" alt="KMeans elbow curve and silhouette score by cluster count" width="560" />
+
+`scripts/elbow_analysis.py` fits `KMeans` at k = 4, 6, ..., 50 on the normalized corpus vectors and tracks inertia (the classic elbow curve) and silhouette score (cluster separation quality, sampled at 3,000 points since it's O(n²) over the full ~37k corpus). Both curves come back unusually smooth: silhouette never climbs past ~0.04 anywhere in the range — well below the ~0.1 floor usually taken as "any real cluster structure" — and inertia declines gradually with no sharp knee. That's an honest result, not a failed analysis: perfume notes blend continuously (a fragrance can read part-floral, part-woody, part-amber all at once) rather than falling into a small number of naturally separable archetypes.
+
+Given that, chasing the technical-best silhouette score (k=46, the noisy tail of an almost-flat curve) isn't a meaningful signal to optimize. `k=22` — where the elbow curve visibly bends, and where silhouette also starts climbing — is the more defensible pick: it keeps the same order of magnitude as the wheel's 14 subfamilies, so the classic and emerged views stay comparable side by side, without leaving the real (if modest) separation gains on the table.
+
 ## The API
 
 `serve.py` is a FastAPI app. On startup it loads `pipeline.joblib` — a bundle (built by `build.py`) containing the fitted two-step pipeline (`NoteFingerprint` + `NicheScorer`), a separate fitted `NearestNeighbors` index for similarity search, precomputed cluster/family data for the `/clusters` map, and the corpus documents (`brand`/`perfume`/`notes`) the indexes point into. That bundle is expensive to build (it requires the whole 37k-row corpus, KMeans, and a t-SNE layout) but cheap to load, so it's built once offline and just deserialized at request time — no per-request refitting.
