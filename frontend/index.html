@@ -1637,7 +1637,12 @@
   // disturbing the browser's own mouseenter/mouseleave tracking.
   function updateCompareHighlight() {
     if (!cmp) return;
-    const current = pinnedCompare || hoveredCompare;
+    // Active hover always wins, live, exactly like before pinning existed;
+    // pinnedCompare only kicks in as the *resting* state once the mouse
+    // isn't over any node -- so pinning something and then hovering around
+    // still highlights whatever's under the cursor, and only falls back to
+    // the pinned one when you're not actively hovering anything.
+    const current = hoveredCompare || pinnedCompare;
     cmp.linkEls.forEach(({ l, path, width, restVisible }) => {
       const active = current && (
         (current.side === "wheel" && current.id === l.wheel)
@@ -1651,10 +1656,10 @@
       arc.setAttribute("opacity", !current || active ? 1 : 0.35);
       text.classList.toggle("active", !!active);
     });
-    if (pinnedCompare) {
-      compareHint.textContent = "Pinned -- click it again, or click outside the diagram, to reset.";
-    } else if (hoveredCompare) {
+    if (hoveredCompare) {
       compareHint.textContent = "Click a subfamily or cluster to pin it while you explore its ribbons.";
+    } else if (pinnedCompare) {
+      compareHint.textContent = "Pinned -- click it again, or click outside the diagram, to reset.";
     } else {
       compareHint.textContent = "Hover a subfamily or cluster to trace where its fragrances actually go.";
     }
