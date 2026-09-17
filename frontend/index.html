@@ -153,6 +153,9 @@
     font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); cursor: pointer;
   }
   .detail-similar:hover { color: var(--ink); }
+  .info-list { margin-top: 20px; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
+  .info-list .match-row:last-child { border-bottom: none; }
+  .info-list-more { font-size: 12px; color: var(--faint); padding: 10px 0 0; }
 </style>
 </head>
 <body>
@@ -181,6 +184,7 @@
     <div class="detail-family" id="info-eyebrow"></div>
     <div class="detail-perfume" id="info-title"></div>
     <div class="detail-notes" id="info-body"></div>
+    <div class="info-list" id="info-list"></div>
   </div>
 </div>
 
@@ -286,16 +290,49 @@
   const infoTitle = document.getElementById("info-title");
   const infoBody = document.getElementById("info-body");
   const infoClose = document.getElementById("info-close");
+  const infoList = document.getElementById("info-list");
+  const INFO_LIST_LIMIT = 40;
 
   function familyLabel(familyId) {
     const fam = clusterState && clusterState.families.find((f) => f.id === familyId);
     return fam ? fam.label : familyId;
   }
 
-  function openInfo(eyebrow, title, body) {
+  // Optional `members`: fragrances belonging to a clicked subfamily cluster.
+  // With thousands of dots packed into a small map, most cluster dots sit
+  // too close together to click individually -- this list lets you reach
+  // any of them from the popup instead of hunting for a clickable gap.
+  function renderInfoList(members) {
+    if (!members || !members.length) {
+      infoList.innerHTML = "";
+      return;
+    }
+    const shown = members.slice(0, INFO_LIST_LIMIT);
+    const rows = shown.map((p, i) => `
+      <div class="match-row" data-idx="${i}">
+        <div>
+          <div class="match-perfume">${p.perfume}</div>
+          <div class="match-brand">${p.brand}</div>
+        </div>
+      </div>
+    `).join("");
+    const more = members.length > shown.length
+      ? `<div class="info-list-more">+${members.length - shown.length} more in this cluster</div>`
+      : "";
+    infoList.innerHTML = rows + more;
+    infoList.querySelectorAll(".match-row").forEach((el, i) => {
+      el.addEventListener("click", () => {
+        closeInfo();
+        openDetail(shown[i]);
+      });
+    });
+  }
+
+  function openInfo(eyebrow, title, body, members) {
     infoEyebrow.textContent = eyebrow;
     infoTitle.textContent = title;
     infoBody.textContent = body || "";
+    renderInfoList(members);
     infoOverlay.classList.add("visible");
   }
 
@@ -580,9 +617,26 @@
         drawDots(hoverIndex);
         updateLabelActiveStates();
       });
-      el.addEventListener("click", () => {
-        const meta = clusterState.fineLabelById[el.dataset.fine];
-        if (meta) openInfo(familyLabel(meta.family), meta.label, SUBFAMILY_INFO[meta.label]);
+      el.addEventListener("click", (e) => {
+        const fineId = el.dataset.fine;
+        // Dots packed directly under a label pill would otherwise be
+        // unreachable (the pill sits on top and eats the click) -- if the
+        // click lands right on one, treat it as a dot click instead of
+        // opening the subfamily popup.
+        const rect = mapCanvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const idx = findNearestIndex(mx, my, rect.width, rect.height, 8);
+        if (idx >= 0) {
+          openDetail(clusterState.points[idx]);
+          return;
+        }
+        const meta = clusterState.fineLabelById[fineId];
+        if (!meta) return;
+        const members = clusterState.points
+          .filter((p) => String(p.fine) === fineId)
+          .sort((a, b) => a.perfume.localeCompare(b.perfume));
+        openInfo(familyLabel(meta.family), meta.label, SUBFAMILY_INFO[meta.label], members);
       });
     });
   }
