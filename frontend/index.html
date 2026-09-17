@@ -57,8 +57,21 @@
   .map-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
   .hover-label { font-size: 13px; color: var(--muted); }
   .map-wrap { position: relative; height: 480px; border-radius: 18px; overflow: hidden; transition: background 0.35s ease; background: var(--panel); border: 1px solid var(--rule); }
-  .map-canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
+  .map-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  .map-canvas.dragging { cursor: grabbing; }
   .map-labels, .map-tooltip { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  .map-controls {
+    position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px;
+    z-index: 2;
+  }
+  .map-ctrl-btn {
+    width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--rule); background: var(--label-bg);
+    color: var(--label-ink); font-family: inherit; font-size: 14px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  }
+  .map-ctrl-btn:hover { background: var(--accent); color: var(--on-accent); }
+  .map-ctrl-btn:disabled { opacity: 0.35; cursor: default; background: var(--label-bg); color: var(--label-ink); }
+  .map-hint { font-size: 12px; letter-spacing: 0.02em; color: var(--faint); }
   .cluster-pill {
     position: absolute; transform: translate(-50%, -50%); font-size: 12px; letter-spacing: 0.06em;
     padding: 4px 9px; border-radius: 999px; white-space: nowrap; color: var(--label-ink); background: var(--label-bg);
@@ -216,8 +229,14 @@
           <canvas class="map-canvas" id="map-canvas"></canvas>
           <div class="map-labels" id="map-labels"></div>
           <div class="map-tooltip"><div class="point-tooltip" id="point-tooltip"></div></div>
+          <div class="map-controls" id="map-controls">
+            <button type="button" class="map-ctrl-btn" id="zoom-in" aria-label="Zoom in">+</button>
+            <button type="button" class="map-ctrl-btn" id="zoom-out" aria-label="Zoom out">&minus;</button>
+            <button type="button" class="map-ctrl-btn" id="zoom-reset" aria-label="Reset zoom" title="Reset view">&#8634;</button>
+          </div>
         </div>
         <div class="legend" id="legend"></div>
+        <div class="map-hint">Scroll or pinch to zoom &middot; drag to pan</div>
         <div id="map-error" class="error-text"></div>
       </div>
 
@@ -481,6 +500,64 @@
     return { x: pad + sx * (w - pad * 2), y: pad + (1 - sy) * (h - pad * 2) };
   }
 
+  // --- Zoom / pan ---
+  // `view` is a scale + translate applied on top of the base `project()`
+  // layout, in canvas-pixel space, so the underlying data layout never
+  // changes -- only how it's framed on screen.
+  const MIN_SCALE = 1;
+  const MAX_SCALE = 14;
+  let view = { scale: 1, tx: 0, ty: 0 };
+
+  function clampNum(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+  function toScreen(pos) {
+    return { x: pos.x * view.scale + view.tx, y: pos.y * view.scale + view.ty };
+  }
+
+  // Convenience: base-project a data point straight into current screen space.
+  function projectScreen(state, x, y, w, h) {
+    return toScreen(project(state, x, y, w, h));
+  }
+
+  // Keeps the scaled content covering the canvas -- can't pan past its edges.
+  function clampPan(w, h) {
+    const minTx = Math.min(0, w - w * view.scale);
+    const maxTx = Math.max(0, w - w * view.scale);
+    view.tx = clampNum(view.tx, minTx, maxTx);
+    const minTy = Math.min(0, h - h * view.scale);
+    const maxTy = Math.max(0, h - h * view.scale);
+    view.ty = clampNum(view.ty, minTy, maxTy);
+  }
+
+  function updateZoomControls() {
+    const zoomInBtn = document.getElementById("zoom-in");
+    const zoomOutBtn = document.getElementById("zoom-out");
+    const zoomResetBtn = document.getElementById("zoom-reset");
+    if (!zoomInBtn) return;
+    zoomInBtn.disabled = view.scale >= MAX_SCALE - 1e-6;
+    zoomOutBtn.disabled = view.scale <= MIN_SCALE + 1e-6;
+    zoomResetBtn.disabled = view.scale <= MIN_SCALE + 1e-6 && view.tx === 0 && view.ty === 0;
+  }
+
+  // Zooms so the data point currently under (mx, my) stays under (mx, my).
+  function zoomAt(mx, my, factor, w, h) {
+    const newScale = clampNum(view.scale * factor, MIN_SCALE, MAX_SCALE);
+    const applied = newScale / view.scale;
+    if (applied === 1) return;
+    view.tx = mx - (mx - view.tx) * applied;
+    view.ty = my - (my - view.ty) * applied;
+    view.scale = newScale;
+    clampPan(w, h);
+    redrawMap(hoverIndex);
+    updateZoomControls();
+  }
+
+  function resetView() {
+    view = { scale: 1, tx: 0, ty: 0 };
+    redrawMap(hoverIndex);
+    updateZoomControls();
+  }
+
   function buildClusterState(data) {
     const points = data.points;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -593,12 +670,13 @@
     if (!clusterState) return;
     const rect = mapCanvas.getBoundingClientRect();
     const w = rect.width, h = rect.height;
+    const margin = 40;
     const raw = Object.keys(clusterState.fineCentroids).map((id) => {
       const meta = clusterState.fineLabelById[id];
       const c = clusterState.fineCentroids[id];
-      const pos = project(clusterState, c.x, c.y, w, h);
+      const pos = projectScreen(clusterState, c.x, c.y, w, h);
       return meta ? { id, text: meta.label, family: meta.family, x: pos.x, y: pos.y } : null;
-    }).filter(Boolean);
+    }).filter((l) => l && l.x > -margin && l.x < w + margin && l.y > -margin && l.y < h + margin);
     const placed = declutterLabels(raw, w, h);
     mapLabels.innerHTML = placed.map((l) => {
       const isActive = l.id === hoveredFine || (hoveredFamily && l.family === hoveredFamily);
@@ -663,7 +741,8 @@
 
     state.points.forEach((p, i) => {
       if (i === highlightIndex) return;
-      const pos = project(state, p.x, p.y, w, h);
+      const pos = projectScreen(state, p.x, p.y, w, h);
+      if (pos.x < -4 || pos.x > w + 4 || pos.y < -4 || pos.y > h + 4) return;
       const dimmed = hoveredFine !== null
         ? String(p.fine) !== hoveredFine
         : (hoveredFamily && p.family !== hoveredFamily);
@@ -676,7 +755,7 @@
 
     if (highlightIndex >= 0) {
       const p = state.points[highlightIndex];
-      const pos = project(state, p.x, p.y, w, h);
+      const pos = projectScreen(state, p.x, p.y, w, h);
       const color = familyColor(p.family, dark);
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
@@ -716,7 +795,7 @@
     let best = -1;
     let bestDist = maxDist * maxDist;
     for (let i = 0; i < state.points.length; i++) {
-      const pos = project(state, state.points[i].x, state.points[i].y, w, h);
+      const pos = projectScreen(state, state.points[i].x, state.points[i].y, w, h);
       const dx = pos.x - mx;
       const dy = pos.y - my;
       const d = dx * dx + dy * dy;
@@ -751,6 +830,7 @@
   }
 
   mapCanvas.addEventListener("mousemove", (e) => {
+    if (isDragging) return;
     const rect = mapCanvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
@@ -769,12 +849,127 @@
   });
 
   mapCanvas.addEventListener("click", (e) => {
+    if (dragMoved) { dragMoved = false; return; }
     const rect = mapCanvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     const idx = findNearestIndex(mx, my, rect.width, rect.height, 22);
     if (idx >= 0) openDetail(clusterState.points[idx]);
   });
+
+  // --- Wheel zoom (mouse wheel + trackpad pinch, which browsers report as
+  // ctrl-modified wheel events) -- zooms toward the cursor position.
+  mapCanvas.addEventListener("wheel", (e) => {
+    if (!clusterState) return;
+    e.preventDefault();
+    const rect = mapCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    zoomAt(mx, my, factor, rect.width, rect.height);
+  }, { passive: false });
+
+  // --- Drag to pan (mouse) ---
+  let isDragging = false;
+  let dragMoved = false;
+  let dragStart = { x: 0, y: 0, tx: 0, ty: 0 };
+
+  mapCanvas.addEventListener("mousedown", (e) => {
+    if (e.button !== 0 || !clusterState) return;
+    isDragging = true;
+    dragMoved = false;
+    const rect = mapCanvas.getBoundingClientRect();
+    dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top, tx: view.tx, ty: view.ty };
+    mapCanvas.classList.add("dragging");
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    const rect = mapCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const dx = mx - dragStart.x;
+    const dy = my - dragStart.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+    view.tx = dragStart.tx + dx;
+    view.ty = dragStart.ty + dy;
+    clampPan(rect.width, rect.height);
+    redrawMap(hoverIndex);
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (!isDragging) return;
+    isDragging = false;
+    mapCanvas.classList.remove("dragging");
+  });
+
+  // --- Touch: one-finger pan, two-finger pinch zoom ---
+  let touchState = null;
+
+  mapCanvas.addEventListener("touchstart", (e) => {
+    if (!clusterState) return;
+    const rect = mapCanvas.getBoundingClientRect();
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      touchState = { mode: "pan", x: t.clientX - rect.left, y: t.clientY - rect.top, tx: view.tx, ty: view.ty };
+    } else if (e.touches.length === 2) {
+      const [a, b] = e.touches;
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const cx = (a.clientX + b.clientX) / 2 - rect.left;
+      const cy = (a.clientY + b.clientY) / 2 - rect.top;
+      touchState = { mode: "pinch", dist: dist || 1, cx, cy, scale: view.scale, tx: view.tx, ty: view.ty };
+    }
+  }, { passive: true });
+
+  mapCanvas.addEventListener("touchmove", (e) => {
+    if (!touchState) return;
+    e.preventDefault();
+    const rect = mapCanvas.getBoundingClientRect();
+    if (touchState.mode === "pan" && e.touches.length === 1) {
+      const t = e.touches[0];
+      const mx = t.clientX - rect.left;
+      const my = t.clientY - rect.top;
+      view.tx = touchState.tx + (mx - touchState.x);
+      view.ty = touchState.ty + (my - touchState.y);
+      clampPan(rect.width, rect.height);
+      redrawMap(hoverIndex);
+    } else if (touchState.mode === "pinch" && e.touches.length === 2) {
+      const [a, b] = e.touches;
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const factor = dist / touchState.dist;
+      const newScale = clampNum(touchState.scale * factor, MIN_SCALE, MAX_SCALE);
+      const applied = newScale / touchState.scale;
+      view.scale = newScale;
+      view.tx = touchState.cx - (touchState.cx - touchState.tx) * applied;
+      view.ty = touchState.cy - (touchState.cy - touchState.ty) * applied;
+      clampPan(rect.width, rect.height);
+      redrawMap(hoverIndex);
+    }
+  }, { passive: false });
+
+  function endTouch(e) {
+    if (!touchState) return;
+    if (e.touches.length === 0) {
+      touchState = null;
+      updateZoomControls();
+    } else if (e.touches.length === 1) {
+      const rect = mapCanvas.getBoundingClientRect();
+      const t = e.touches[0];
+      touchState = { mode: "pan", x: t.clientX - rect.left, y: t.clientY - rect.top, tx: view.tx, ty: view.ty };
+    }
+  }
+  mapCanvas.addEventListener("touchend", endTouch);
+  mapCanvas.addEventListener("touchcancel", endTouch);
+
+  document.getElementById("zoom-in").addEventListener("click", () => {
+    const rect = mapCanvas.getBoundingClientRect();
+    zoomAt(rect.width / 2, rect.height / 2, 1.5, rect.width, rect.height);
+  });
+  document.getElementById("zoom-out").addEventListener("click", () => {
+    const rect = mapCanvas.getBoundingClientRect();
+    zoomAt(rect.width / 2, rect.height / 2, 1 / 1.5, rect.width, rect.height);
+  });
+  document.getElementById("zoom-reset").addEventListener("click", resetView);
 
   // --- Fragrance detail modal ---
   const detailOverlay = document.getElementById("detail-overlay");
@@ -837,7 +1032,11 @@
   let mapResizeTimer;
   window.addEventListener("resize", () => {
     clearTimeout(mapResizeTimer);
-    mapResizeTimer = setTimeout(() => redrawMap(hoverIndex), 120);
+    mapResizeTimer = setTimeout(() => {
+      const rect = mapCanvas.getBoundingClientRect();
+      clampPan(rect.width, rect.height);
+      redrawMap(hoverIndex);
+    }, 120);
   });
 
   async function loadClusters() {
@@ -849,6 +1048,7 @@
       clusterState = buildClusterState(data);
       renderLegend();
       redrawMap(-1);
+      updateZoomControls();
     } catch (err) {
       mapError.textContent = err.message || "Failed to load the map.";
     }
