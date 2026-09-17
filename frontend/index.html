@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Fragrance</title>
+<title>Sillage</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Jost:wght@300;400;500&display=swap" />
@@ -91,12 +91,8 @@
   .analyze-btn:disabled { opacity: 0.6; cursor: default; }
   .k-note { font-size: 13px; letter-spacing: 0.06em; color: var(--faint); }
 
-  .niche-row { display: flex; align-items: baseline; gap: 18px; }
-  .niche-score { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 300; font-size: 58px; line-height: 0.85; color: var(--accent); }
-  .niche-desc { font-size: 14px; line-height: 1.6; letter-spacing: 0.02em; color: var(--muted); }
-
-  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); column-gap: 14px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); }
-  .stats-grid .stat-value { font-family: "Cormorant Garamond", serif; font-size: 30px; letter-spacing: 0; text-transform: none; margin-bottom: 4px; color: var(--ink); }
+  .similarity-line { font-size: 17px; letter-spacing: 0.02em; color: var(--ink); }
+  .similarity-line .pct { color: var(--accent); }
 
   .nearest-block { display: flex; flex-direction: column; }
   .nearest-block .eyebrow { margin-bottom: 16px; }
@@ -160,7 +156,7 @@
 <body>
 <div class="loading-overlay" id="loading-overlay">
   <div class="loading-inner">
-    <div class="loading-mark">Fragrance</div>
+    <div class="loading-mark">Sillage</div>
     <div class="loading-dots"><span></span><span></span><span></span></div>
   </div>
 </div>
@@ -182,7 +178,7 @@
 
     <div class="top">
       <div>
-        <div class="wordmark">Fragrance</div>
+        <div class="wordmark">Sillage</div>
         <div class="tagline">A quiet map of scent. Find what sits nearest yours.</div>
       </div>
       <div class="top-right">
@@ -221,17 +217,7 @@
           <div id="analyze-error" class="error-text"></div>
         </div>
 
-        <div class="niche-row">
-          <div class="niche-score" id="niche-score">—</div>
-          <div class="niche-desc" id="niche-desc">niche score<br />enter some notes to begin</div>
-        </div>
-
-        <div class="stats-grid" id="stats-grid">
-          <div><div class="stat-value">—</div>notes</div>
-          <div><div class="stat-value">—</div>known</div>
-          <div><div class="stat-value">—</div>rarity</div>
-          <div><div class="stat-value">—</div>diversity</div>
-        </div>
+        <div class="similarity-line" id="similarity-line"></div>
 
         <div class="nearest-block">
           <div class="eyebrow">Nearest</div>
@@ -299,22 +285,12 @@
   const notesInput = document.getElementById("notes-input");
   const analyzeBtn = document.getElementById("analyze-btn");
   const analyzeError = document.getElementById("analyze-error");
-  const nicheScoreEl = document.getElementById("niche-score");
-  const nicheDescEl = document.getElementById("niche-desc");
-  const statsGrid = document.getElementById("stats-grid");
+  const similarityLine = document.getElementById("similarity-line");
   const matchesList = document.getElementById("matches-list");
 
-  function renderStats(stats) {
-    statsGrid.innerHTML = `
-      <div><div class="stat-value">${stats.note_count}</div>notes</div>
-      <div><div class="stat-value">${stats.known_note_count}</div>known</div>
-      <div><div class="stat-value">${stats.avg_rarity.toFixed(2)}</div>rarity</div>
-      <div><div class="stat-value">${(stats.diversity * 100).toFixed(0)}%</div>diversity</div>`;
-  }
-
-  function renderNiche(stats) {
-    nicheScoreEl.textContent = stats.niche_score.toFixed(0);
-    nicheDescEl.innerHTML = `niche score<br />quieter than ${stats.niche_score.toFixed(0)}% of the corpus`;
+  function renderSimilarity(stats) {
+    const pct = Math.round(100 - stats.niche_score);
+    similarityLine.innerHTML = `This is similar to <span class="pct">${pct}%</span> of fragrances.`;
   }
 
   let lastMatches = [];
@@ -361,8 +337,7 @@
         throw new Error(body.detail ? JSON.stringify(body.detail) : `Request failed (${res.status})`);
       }
       const data = await res.json();
-      renderStats(data.stats);
-      renderNiche(data.stats);
+      renderSimilarity(data.stats);
       renderMatches(data.matches);
     } catch (err) {
       analyzeError.textContent = err.message || "Something went wrong.";
