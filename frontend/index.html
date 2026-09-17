@@ -225,7 +225,7 @@
           <div class="eyebrow">The map</div>
           <div class="hover-label" id="hover-label">hover a dot</div>
         </div>
-        <div class="map-wrap">
+        <div class="map-wrap" id="map-wrap">
           <canvas class="map-canvas" id="map-canvas"></canvas>
           <div class="map-labels" id="map-labels"></div>
           <div class="map-tooltip"><div class="point-tooltip" id="point-tooltip"></div></div>
@@ -475,6 +475,7 @@
 
   // --- The map ---
   const mapCanvas = document.getElementById("map-canvas");
+  const mapWrap = document.getElementById("map-wrap");
   const mapLabels = document.getElementById("map-labels");
   const pointTooltip = document.getElementById("point-tooltip");
   const hoverLabelEl = document.getElementById("hover-label");
@@ -859,7 +860,7 @@
 
   // --- Wheel zoom (mouse wheel + trackpad pinch, which browsers report as
   // ctrl-modified wheel events) -- zooms toward the cursor position.
-  mapCanvas.addEventListener("wheel", (e) => {
+  mapWrap.addEventListener("wheel", (e) => {
     if (!clusterState) return;
     e.preventDefault();
     const rect = mapCanvas.getBoundingClientRect();
@@ -874,7 +875,7 @@
   let dragMoved = false;
   let dragStart = { x: 0, y: 0, tx: 0, ty: 0 };
 
-  mapCanvas.addEventListener("mousedown", (e) => {
+  mapWrap.addEventListener("mousedown", (e) => {
     if (e.button !== 0 || !clusterState) return;
     isDragging = true;
     dragMoved = false;
@@ -906,7 +907,7 @@
   // --- Touch: one-finger pan, two-finger pinch zoom ---
   let touchState = null;
 
-  mapCanvas.addEventListener("touchstart", (e) => {
+  mapWrap.addEventListener("touchstart", (e) => {
     if (!clusterState) return;
     const rect = mapCanvas.getBoundingClientRect();
     if (e.touches.length === 1) {
@@ -921,7 +922,7 @@
     }
   }, { passive: true });
 
-  mapCanvas.addEventListener("touchmove", (e) => {
+  mapWrap.addEventListener("touchmove", (e) => {
     if (!touchState) return;
     e.preventDefault();
     const rect = mapCanvas.getBoundingClientRect();
@@ -958,8 +959,8 @@
       touchState = { mode: "pan", x: t.clientX - rect.left, y: t.clientY - rect.top, tx: view.tx, ty: view.ty };
     }
   }
-  mapCanvas.addEventListener("touchend", endTouch);
-  mapCanvas.addEventListener("touchcancel", endTouch);
+  mapWrap.addEventListener("touchend", endTouch);
+  mapWrap.addEventListener("touchcancel", endTouch);
 
   document.getElementById("zoom-in").addEventListener("click", () => {
     const rect = mapCanvas.getBoundingClientRect();
