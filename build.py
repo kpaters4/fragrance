@@ -23,9 +23,24 @@ from pipeline_def import NicheScorer, NoteFingerprint
 ARTIFACT_PATH = "pipeline.joblib"
 MIN_DF = 2
 PAGE_SIZE = 1000
-# One cluster per named subfamily on the Michael Edwards Fragrance Wheel (see
-# SUBFAMILY_KEYWORDS below) -- the standard reference wheel this taxonomy follows.
-N_FINE_CLUSTERS = 14
+# Clusters used only for NicheScorer's "cluster rarity" signal (how small a
+# fragrance's neighborhood is) -- unrelated to the /clusters map below, kept
+# as its own constant so retuning the map's resolution never silently
+# changes niche scoring.
+NICHE_CLUSTERS = 14
+# The map's fine-grained clustering. Deliberately more than the 14 named
+# Fragrance Wheel subfamilies (see SUBFAMILY_KEYWORDS below) -- some
+# subfamilies (aquatic, fruity, dry-wood notes) are rarely any single
+# cluster's dominant character at coarser resolution, so a strict 14-cluster
+# / 14-subfamily bijection forced a few clusters into names that didn't
+# match their actual notes at all. At this resolution every subfamily has a
+# real, distinctly-matching cluster; see _assign_subfamilies for how a
+# popular subfamily (e.g. Floral) ends up covering several clusters while a
+# rarer one (e.g. Water) still gets exactly the one it best matches.
+MAP_FINE_CLUSTERS = 40
+# How many of a cluster's top centroid-weighted notes get scored against the
+# subfamily keyword sets when labeling it.
+TOP_NOTES_FOR_LABELING = 10
 NICHE_K_NEIGHBORS = 10
 RANDOM_STATE = 42
 
@@ -41,50 +56,94 @@ RANDOM_STATE = 42
 # where gourmand fragrances have historically been classified.
 SUBFAMILY_KEYWORDS = {
     "Floral": {
-        "rose", "jasmine", "floral notes", "tuberose", "freesia", "lily-of-the-valley",
-        "peony", "geranium", "magnolia", "gardenia",
+        "rose", "bulgarian rose", "damask rose", "turkish rose", "jasmine", "jasmine sambac",
+        "tuberose", "freesia", "lily-of-the-valley", "lily", "peony", "geranium", "magnolia",
+        "gardenia", "carnation", "lilac", "hyacinth", "narcissus", "wisteria", "camellia",
+        "sweet pea", "honeysuckle", "floral notes",
     },
     "Soft Floral": {
-        "violet", "iris", "heliotrope", "mimosa", "orris", "powdery notes", "aldehydes",
+        "violet", "iris", "iris flower", "iris petals", "orris", "orris root", "heliotrope",
+        "mimosa", "aldehydes", "powdery notes", "cyclamen",
     },
     "Floral Amber": {
-        "orange blossom", "ylang-ylang", "tuberose", "gardenia", "plumeria", "frangipani",
+        "orange blossom", "tunisian orange blossom", "french orange flower",
+        "african orange flower", "valencia orange flower", "ylang-ylang",
+        "madagascar ylang-ylang", "tuberose", "egyptian tuberose", "indian tuberose",
+        "gardenia", "tahitian gardenia", "frangipani", "tiare flower", "champaca",
+        "yellow champaca",
     },
     "Soft Amber": {
-        "amber", "ambrox", "vanilla", "vanille", "tonka bean", "benzoin", "incense",
+        "amber", "ambroxan", "vanilla", "vanille", "bourbon vanilla", "madagascar vanilla",
+        "tahitian vanilla", "mexican vanilla", "natural vanilla", "tonka bean", "benzoin",
+        "siam benzoin", "incense", "opoponax",
     },
     "Amber": {
-        "myrrh", "labdanum", "saffron", "cardamom", "cinnamon", "clove", "nutmeg",
-        "chocolate", "coffee", "praline", "caramel", "honey", "almond", "coconut",
+        "amber", "myrrh", "labdanum", "french labdanum", "spanish labdanum", "saffron",
+        "indian saffron", "cardamom", "black cardamom", "white cardamom",
+        "guatemalan cardamom", "cinnamon", "ceylon cinnamon", "clove", "cloves", "nutmeg",
+        "indonesian nutmeg", "chocolate", "dark chocolate", "mexican chocolate", "coffee",
+        "roasted coffee beans", "praline", "caramel", "honey", "almond", "coconut", "resin",
+        "resins", "elemi", "styrax", "olibanum",
     },
     "Woody Amber": {
-        "oud", "agarwood (oud)", "patchouli", "sandalwood", "leather", "pink pepper",
+        "agarwood (oud)", "cambodian oud", "indian oud", "laotian oud", "thailand oud",
+        "white oud", "patchouli", "indian patchouli", "indonesian patchouli leaf",
+        "singapore patchouli", "sandalwood", "madagascar sandalwood", "leather",
+        "russian leather", "suede", "white suede", "pink pepper", "castoreum",
     },
     "Woods": {
-        "sandalwood", "cedar", "vetiver", "woody notes", "woodsy notes",
+        "sandalwood", "australian sandalwood", "madagascar sandalwood", "red sandalwood",
+        "white sandalwood", "cedar", "atlas cedar", "virginia cedar", "texas cedar",
+        "himalayan cedar", "chinese cedar", "moroccan cedar", "red cedar", "vetiver",
+        "haitian vetiver", "bourbon vetiver", "madagascar vetiver", "java vetiver oil",
+        "tahitian vetiver", "woody notes", "woodsy notes", "cashmeran",
     },
     "Mossy Woods": {
-        "oakmoss", "moss", "vetiver", "patchouli",
+        "oakmoss", "oak moss", "serbian oakmoss", "moss", "cedarmoss", "patchouli", "vetiver",
     },
     "Dry Woods": {
-        "birch", "tobacco", "leather", "dry woods", "guaiac wood",
+        "birch", "birch leaf", "tobacco", "tobacco leaf", "tobacco blossom",
+        "bulgarian light tobacco", "white tobacco", "leather", "guaiac wood", "smoke",
+        "gunpowder", "ash",
     },
     "Citrus": {
-        "citrus", "citruses", "lemon", "lime", "bergamot", "grapefruit", "orange",
-        "mandarin", "petitgrain", "neroli",
+        "citruses", "sicilian citrus", "sicilian citruses", "japanese citruses", "lemon",
+        "sicilian lemon", "italian lemon", "amalfi lemon", "argentinian lemon",
+        "californian lemon", "moroccan lemon", "lemon zest", "lemon peel", "lime", "bergamot",
+        "calabrian bergamot", "sicilian bergamot", "white bergamot", "grapefruit",
+        "pink grapefruit", "blood grapefruit", "florida grapefruit", "white grapefruit",
+        "mandarin orange", "petitgrain", "petitgrain paraguay", "neroli", "neroli essence",
+        "yuzu", "tangerine", "clementine", "pomelo", "bitter orange",
     },
     "Water": {
-        "aquatic", "water notes", "marine", "ozonic", "sea notes",
+        "water notes", "watery notes", "sea notes", "sea water", "sea salt", "seagrass",
+        "seashells", "seaweed", "ozonic notes", "rain notes", "calone", "salt", "cucumber",
+        "watercress", "solar notes",
     },
     "Green": {
-        "green notes", "green", "galbanum", "violet leaf", "grass",
+        "green notes", "green accord", "green leaves", "grass", "green grass", "galbanum",
+        "violet leaf", "violet leaves", "fig leaf", "tomato leaf", "ivy", "nettle",
+        "bamboo leaf",
     },
     "Aromatic": {
-        "lavender", "mint", "rosemary", "sage", "basil", "aromatic", "juniper", "thyme",
+        "lavender", "wild lavender", "blue lavender", "lavender extract", "mint",
+        "water mint", "spicy mint", "rosemary", "sage", "clary sage", "blue sage",
+        "egyptian sage", "basil", "basil leaf", "israeli basil", "black basil", "thyme",
+        "red thyme", "tulsi", "marjoram", "oregano", "juniper", "juniper berries",
+        "juniper berry", "aromatic spices", "artemisia", "tarragon",
     },
     "Fruity": {
-        "apple", "peach", "pear", "berries", "black currant", "cassis", "mango",
-        "pineapple", "strawberry", "raspberry", "melon", "litchi",
+        "apple", "green apple", "red apple", "granny smith apple", "pear", "pear blossom",
+        "peach", "white peach", "red peach", "peach blossom", "apricot", "white apricot",
+        "apricot blossom", "plum", "mirabelle plum", "damask plum", "yellow plum",
+        "chinese plum", "japanese plum", "cherry", "sour cherry", "white cherry",
+        "maraschino cherry", "red berries", "wild berries", "forest fruits", "berry fruits",
+        "black currant", "cassis", "red currant", "white currant", "mango", "pineapple",
+        "strawberry", "wild strawberry", "raspberry", "litchi", "chinese litchi",
+        "pink litchi", "red litchi", "melon", "italian melon", "frosted melon", "watermelon",
+        "guava", "papaya", "passionfruit", "pomegranate", "quince", "banana", "kiwi",
+        "dried fruits", "tropical fruit", "tropical fruits", "exotic fruits", "gooseberry",
+        "cranberry", "blueberry", "blackberry",
     },
 }
 
@@ -113,11 +172,20 @@ def _score_subfamilies(top_notes):
 
 
 def _assign_subfamilies(cluster_top_notes):
-    """Greedily assigns each cluster to a distinct Fragrance Wheel subfamily,
-    claiming the strongest-scoring (cluster, subfamily) pairs first. With
-    N_FINE_CLUSTERS == len(SUBFAMILY_KEYWORDS) this yields a full one-to-one
-    mapping, so every named subfamily gets used exactly once instead of a few
-    generic ones (like "Floral") independently winning several clusters' votes.
+    """Assigns each cluster to its best-matching Fragrance Wheel subfamily, in
+    two passes:
+
+    1. Coverage pass -- same greedy claiming as a strict one-to-one mapping
+       (strongest-scoring (cluster, subfamily) pairs claimed first), but only
+       until every subfamily has claimed exactly one cluster. This guarantees
+       every named subfamily is used at least once, by its single best-fitting
+       cluster out of all of them -- even a rare subfamily like Water still
+       gets a real match rather than being forced onto whatever's left over.
+    2. Free pass -- every remaining, unclaimed cluster independently picks
+       whichever subfamily scores highest for it, with no uniqueness
+       constraint. A broad subfamily like Floral or Amber naturally ends up
+       covering several clusters this way, since the corpus has many
+       distinct flavors of it; a narrow one just doesn't gain any more.
     """
     scores = {cid: _score_subfamilies(notes) for cid, notes in cluster_top_notes.items()}
     candidates = sorted(
@@ -128,10 +196,15 @@ def _assign_subfamilies(cluster_top_notes):
     assigned = {}
     claimed = set()
     for _, cid, sub in candidates:
+        if len(claimed) == len(SUBFAMILY_KEYWORDS):
+            break
         if cid in assigned or sub in claimed:
             continue
         assigned[cid] = sub
         claimed.add(sub)
+    for cid, subfamily_scores in scores.items():
+        if cid not in assigned:
+            assigned[cid] = max(subfamily_scores, key=subfamily_scores.get)
     return assigned
 
 
@@ -148,19 +221,19 @@ def compute_clusters(pipeline, corpus_matrix):
     norm_matrix = normalize(corpus_matrix)
 
     print("Fitting fine clusters...")
-    kmeans = KMeans(n_clusters=N_FINE_CLUSTERS, random_state=RANDOM_STATE, n_init=10)
+    kmeans = KMeans(n_clusters=MAP_FINE_CLUSTERS, random_state=RANDOM_STATE, n_init=10)
     fine_labels = kmeans.fit_predict(norm_matrix)
 
     cluster_top_notes = {}
-    for cluster_id in range(N_FINE_CLUSTERS):
+    for cluster_id in range(MAP_FINE_CLUSTERS):
         center = kmeans.cluster_centers_[cluster_id]
-        top_idx = np.argsort(center)[::-1][:6]
+        top_idx = np.argsort(center)[::-1][:TOP_NOTES_FOR_LABELING]
         cluster_top_notes[cluster_id] = [inv_vocab[i] for i in top_idx if center[i] > 0]
 
     subfamily_by_cluster = _assign_subfamilies(cluster_top_notes)
 
     fine_meta = {}
-    for cluster_id in range(N_FINE_CLUSTERS):
+    for cluster_id in range(MAP_FINE_CLUSTERS):
         subfamily = subfamily_by_cluster[cluster_id]
         fine_meta[cluster_id] = {
             "label": subfamily,
@@ -215,7 +288,7 @@ def main():
 
     pipeline = Pipeline([
         ("fingerprint", NoteFingerprint(min_df=MIN_DF)),
-        ("niche", NicheScorer(n_clusters=N_FINE_CLUSTERS, k_neighbors=NICHE_K_NEIGHBORS,
+        ("niche", NicheScorer(n_clusters=NICHE_CLUSTERS, k_neighbors=NICHE_K_NEIGHBORS,
                                random_state=RANDOM_STATE)),
     ])
     pipeline.fit(notes_series)

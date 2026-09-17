@@ -599,26 +599,37 @@
       if (p.y > maxY) maxY = p.y;
     });
 
-    const fineCentroids = {};
-    const fineCounts = {};
-    points.forEach((p) => {
-      if (!fineCentroids[p.fine]) {
-        fineCentroids[p.fine] = { x: 0, y: 0 };
-        fineCounts[p.fine] = 0;
-      }
-      fineCentroids[p.fine].x += p.x;
-      fineCentroids[p.fine].y += p.y;
-      fineCounts[p.fine] += 1;
-    });
-    Object.keys(fineCentroids).forEach((id) => {
-      fineCentroids[id].x /= fineCounts[id];
-      fineCentroids[id].y /= fineCounts[id];
-    });
-
     const fineLabelById = {};
     data.fine_clusters.forEach((fc) => { fineLabelById[fc.id] = fc; });
+    // Denormalize each point's subfamily name onto itself so the hot
+    // per-frame draw loop never has to do a fineLabelById lookup.
+    points.forEach((p) => { p.label = fineLabelById[p.fine].label; });
 
-    return { points, families: data.families, bounds: { minX, maxX, minY, maxY }, fineCentroids, fineLabelById };
+    // The map is fine-clustered well beyond the 14 named subfamilies (see
+    // build.py) so that rare subfamilies -- aquatic, fruity, dry-wood notes
+    // -- get a cluster that genuinely matches their notes instead of being
+    // forced onto whatever's left over. Several raw clusters can therefore
+    // share the same subfamily name (a broad family like Floral naturally
+    // covers more of them than a narrow one). For the map's label pills we
+    // group back down to one pill per unique NAME, positioned at the
+    // member-weighted centroid across every cluster sharing that name, so
+    // the map still shows a clean ~14 labels instead of dozens.
+    const labelGroups = {};
+    points.forEach((p) => {
+      if (!labelGroups[p.label]) {
+        labelGroups[p.label] = { family: p.family, x: 0, y: 0, count: 0 };
+      }
+      const g = labelGroups[p.label];
+      g.x += p.x;
+      g.y += p.y;
+      g.count += 1;
+    });
+    Object.keys(labelGroups).forEach((label) => {
+      labelGroups[label].x /= labelGroups[label].count;
+      labelGroups[label].y /= labelGroups[label].count;
+    });
+
+    return { points, families: data.families, bounds: { minX, maxX, minY, maxY }, labelGroups, fineLabelById };
   }
 
   let hoveredFamily = null;
@@ -634,7 +645,7 @@
     legendEl.querySelectorAll(".item").forEach((el) => {
       el.addEventListener("mouseenter", () => {
         hoveredFamily = el.dataset.family;
-        hoveredFine = null;
+        hoveredLabel = null;
         el.classList.add("active");
         drawDots(hoverIndex);
         updateLabelActiveStates();
@@ -695,48 +706,49 @@
     return boxes;
   }
 
-  let hoveredFine = null;
+  let hoveredLabel = null;
 
   function renderClusterLabels() {
     if (!clusterState) return;
     const rect = mapCanvas.getBoundingClientRect();
     const w = rect.width, h = rect.height;
     const margin = 40;
-    const raw = Object.keys(clusterState.fineCentroids).map((id) => {
-      const meta = clusterState.fineLabelById[id];
-      const c = clusterState.fineCentroids[id];
-      const pos = projectScreen(clusterState, c.x, c.y, w, h);
-      return meta ? { id, text: meta.label, family: meta.family, x: pos.x, y: pos.y } : null;
-    }).filter((l) => l && l.x > -margin && l.x < w + margin && l.y > -margin && l.y < h + margin);
+    const raw = Object.keys(clusterState.labelGroups).map((label) => {
+      const g = clusterState.labelGroups[label];
+      const pos = projectScreen(clusterState, g.x, g.y, w, h);
+      return { id: label, text: label, family: g.family, x: pos.x, y: pos.y };
+    }).filter((l) => l.x > -margin && l.x < w + margin && l.y > -margin && l.y < h + margin);
     const placed = declutterLabels(raw, w, h);
     mapLabels.innerHTML = placed.map((l) => {
-      const isActive = l.id === hoveredFine || (hoveredFamily && l.family === hoveredFamily);
-      return `<span class="cluster-pill${isActive ? " active" : ""}" data-fine="${l.id}" style="left:${l.x}px; top:${l.y}px;">${l.text}</span>`;
+      const isActive = l.id === hoveredLabel || (hoveredFamily && l.family === hoveredFamily);
+      return `<span class="cluster-pill${isActive ? " active" : ""}" data-label="${l.id}" style="left:${l.x}px; top:${l.y}px;">${l.text}</span>`;
     }).join("");
     mapLabels.querySelectorAll(".cluster-pill").forEach((el) => {
       el.addEventListener("mouseenter", () => {
-        hoveredFine = el.dataset.fine;
+        hoveredLabel = el.dataset.label;
         hoveredFamily = null;
         renderLegend();
         drawDots(hoverIndex);
         updateLabelActiveStates();
       });
       el.addEventListener("mouseleave", () => {
-        hoveredFine = null;
+        hoveredLabel = null;
         drawDots(hoverIndex);
         updateLabelActiveStates();
       });
       el.addEventListener("click", () => {
-        const fineId = el.dataset.fine;
+        const label = el.dataset.label;
+        const g = clusterState.labelGroups[label];
+        if (!g) return;
         // Clicking a label always opens its subfamily popup, even when a
         // dot sits directly underneath -- the popup's member list is how
         // you reach dots packed too tightly under a pill to click directly.
-        const meta = clusterState.fineLabelById[fineId];
-        if (!meta) return;
+        // A subfamily can span several underlying clusters (see
+        // buildClusterState), so gather members from all of them.
         const members = clusterState.points
-          .filter((p) => String(p.fine) === fineId)
+          .filter((p) => p.label === label)
           .sort((a, b) => a.perfume.localeCompare(b.perfume));
-        openInfo(familyLabel(meta.family), meta.label, SUBFAMILY_INFO[meta.label], members);
+        openInfo(familyLabel(g.family), label, SUBFAMILY_INFO[label], members);
       });
     });
   }
@@ -765,8 +777,8 @@
       if (i === highlightIndex) return;
       const pos = projectScreen(state, p.x, p.y, w, h);
       if (pos.x < -4 || pos.x > w + 4 || pos.y < -4 || pos.y > h + 4) return;
-      const dimmed = hoveredFine !== null
-        ? String(p.fine) !== hoveredFine
+      const dimmed = hoveredLabel !== null
+        ? p.label !== hoveredLabel
         : (hoveredFamily && p.family !== hoveredFamily);
       const baseAlpha = dark ? 0.72 : 0.6;
       ctx.beginPath();
@@ -805,8 +817,9 @@
   function updateLabelActiveStates() {
     if (!clusterState) return;
     mapLabels.querySelectorAll(".cluster-pill").forEach((el) => {
-      const meta = clusterState.fineLabelById[el.dataset.fine];
-      const isActive = el.dataset.fine === hoveredFine || (hoveredFamily && meta && meta.family === hoveredFamily);
+      const label = el.dataset.label;
+      const g = clusterState.labelGroups[label];
+      const isActive = label === hoveredLabel || (hoveredFamily && g && g.family === hoveredFamily);
       el.classList.toggle("active", isActive);
     });
   }
@@ -839,8 +852,7 @@
     }
     if (best >= 0) {
       const p = state.points[best];
-      const fine = state.fineLabelById[p.fine];
-      hoverLabelEl.textContent = fine ? fine.label : "";
+      hoverLabelEl.textContent = p.label || "";
       pointTooltip.innerHTML = `<div class="tt-brand">${p.brand}</div>${p.perfume}`;
       pointTooltip.style.left = `${mx}px`;
       pointTooltip.style.top = `${my}px`;
