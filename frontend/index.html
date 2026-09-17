@@ -57,7 +57,7 @@
   .map-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
   .hover-label { font-size: 13px; color: var(--muted); }
   .map-wrap { position: relative; height: 480px; border-radius: 18px; overflow: hidden; transition: background 0.35s ease; background: var(--panel); border: 1px solid var(--rule); }
-  .map-canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .map-canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
   .map-labels, .map-tooltip { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
   .cluster-pill {
     position: absolute; transform: translate(-50%, -50%); font-size: 12px; letter-spacing: 0.06em;
@@ -100,16 +100,83 @@
 
   .nearest-block { display: flex; flex-direction: column; }
   .nearest-block .eyebrow { margin-bottom: 16px; }
-  .match-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .match-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--rule); cursor: pointer; transition: opacity 0.15s ease; }
+  .match-row:hover { opacity: 0.65; }
   .match-perfume { font-size: 17px; font-weight: 400; }
   .match-brand { font-size: 12px; margin-top: 4px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
   .match-sim { font-size: 14px; color: var(--accent); }
 
   .error-text { font-size: 13px; color: var(--error); }
   .muted-text { font-size: 13px; color: var(--muted); }
+
+  .loading-overlay {
+    position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); transition: opacity 0.4s ease, visibility 0.4s ease;
+  }
+  .loading-overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+  .loading-inner { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .loading-mark { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 300; font-size: 34px; letter-spacing: 0.02em; color: var(--ink); }
+  .loading-dots { display: flex; gap: 8px; }
+  .loading-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: loading-pulse 1.1s infinite ease-in-out; }
+  .loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes loading-pulse {
+    0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+
+  .legend span.item { cursor: pointer; border-radius: 999px; padding: 2px 6px; margin: -2px -6px; transition: background 0.15s ease, color 0.15s ease; }
+  .legend span.item:hover, .legend span.item.active { background: var(--rule); color: var(--ink); }
+
+  .detail-overlay {
+    position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+    background: rgba(20, 18, 15, 0.35); opacity: 0; visibility: hidden; padding: 24px;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+  }
+  .detail-overlay.visible { opacity: 1; visibility: visible; }
+  .detail-card {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 18px; padding: 36px 40px;
+    max-width: 420px; width: 100%; position: relative; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+    transform: translateY(8px); transition: transform 0.25s ease;
+  }
+  .detail-overlay.visible .detail-card { transform: translateY(0); }
+  .detail-close {
+    position: absolute; top: 14px; right: 16px; border: none; background: transparent; color: var(--faint);
+    font-size: 22px; line-height: 1; cursor: pointer; padding: 4px;
+  }
+  .detail-close:hover { color: var(--ink); }
+  .detail-family { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint); margin-bottom: 10px; }
+  .detail-perfume { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 400; font-size: 28px; line-height: 1.15; }
+  .detail-brand { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+  .detail-notes { font-size: 14px; line-height: 1.6; color: var(--muted); margin-top: 18px; }
+  .detail-similarity { font-size: 13px; color: var(--accent); margin-top: 14px; }
+  .detail-similar {
+    display: inline-block; margin-top: 22px; background: none; border: none; padding: 0; font-family: inherit;
+    font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); cursor: pointer;
+  }
+  .detail-similar:hover { color: var(--ink); }
 </style>
 </head>
 <body>
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-inner">
+    <div class="loading-mark">Fragrance</div>
+    <div class="loading-dots"><span></span><span></span><span></span></div>
+  </div>
+</div>
+
+<div class="detail-overlay" id="detail-overlay">
+  <div class="detail-card">
+    <button type="button" class="detail-close" id="detail-close" aria-label="Close">&times;</button>
+    <div class="detail-family" id="detail-family"></div>
+    <div class="detail-perfume" id="detail-perfume"></div>
+    <div class="detail-brand" id="detail-brand"></div>
+    <div class="detail-notes" id="detail-notes"></div>
+    <div class="detail-similarity" id="detail-similarity"></div>
+    <button type="button" class="detail-similar" id="detail-similar">Find similar &rarr;</button>
+  </div>
+</div>
+
 <div class="page">
   <div class="shell">
 
@@ -250,19 +317,28 @@
     nicheDescEl.innerHTML = `niche score<br />quieter than ${stats.niche_score.toFixed(0)}% of the corpus`;
   }
 
+  let lastMatches = [];
+
   function renderMatches(matches) {
+    lastMatches = matches;
     if (!matches.length) {
       matchesList.innerHTML = '<p class="muted-text">No matches found.</p>';
       return;
     }
-    matchesList.innerHTML = matches.map(m => `
-      <div class="match-row">
+    matchesList.innerHTML = matches.map((m, i) => `
+      <div class="match-row" data-idx="${i}">
         <div>
           <div class="match-perfume">${m.perfume}</div>
           <div class="match-brand">${m.brand}</div>
         </div>
         <div class="match-sim">${(m.similarity * 100).toFixed(1)}%</div>
       </div>`).join("");
+    matchesList.querySelectorAll(".match-row").forEach((el) => {
+      el.addEventListener("click", () => {
+        const m = lastMatches[Number(el.dataset.idx)];
+        if (m) openDetail(m, { similarity: m.similarity });
+      });
+    });
   }
 
   async function analyze() {
@@ -360,12 +436,28 @@
     return { points, families: data.families, bounds: { minX, maxX, minY, maxY }, fineCentroids, fineLabelById };
   }
 
+  let hoveredFamily = null;
+
   function renderLegend() {
     if (!clusterState) return;
     const dark = isDark();
     legendEl.innerHTML = clusterState.families.map((fam) => `
-      <span class="item"><span class="dot" style="background:${familyColor(fam.id, dark)}"></span>${fam.label}</span>
+      <span class="item${fam.id === hoveredFamily ? " active" : ""}" data-family="${fam.id}">
+        <span class="dot" style="background:${familyColor(fam.id, dark)}"></span>${fam.label}
+      </span>
     `).join("");
+    legendEl.querySelectorAll(".item").forEach((el) => {
+      el.addEventListener("mouseenter", () => {
+        hoveredFamily = el.dataset.family;
+        el.classList.add("active");
+        drawMap(hoverIndex);
+      });
+      el.addEventListener("mouseleave", () => {
+        hoveredFamily = null;
+        el.classList.remove("active");
+        drawMap(hoverIndex);
+      });
+    });
   }
 
   function measureLabelBox(text) {
@@ -446,9 +538,11 @@
     state.points.forEach((p, i) => {
       if (i === highlightIndex) return;
       const pos = project(state, p.x, p.y, w, h);
+      const dimmed = hoveredFamily && p.family !== hoveredFamily;
+      const baseAlpha = dark ? 0.72 : 0.6;
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 2.2, 0, Math.PI * 2);
-      ctx.fillStyle = hexToRgba(familyColor(p.family, dark), dark ? 0.72 : 0.6);
+      ctx.arc(pos.x, pos.y, dimmed ? 1.8 : 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = hexToRgba(familyColor(p.family, dark), dimmed ? baseAlpha * 0.12 : baseAlpha);
       ctx.fill();
     });
 
@@ -472,11 +566,11 @@
     renderClusterLabels();
   }
 
-  function updateHover(mx, my, w, h) {
+  function findNearestIndex(mx, my, w, h, maxDist) {
     const state = clusterState;
-    if (!state) return;
+    if (!state) return -1;
     let best = -1;
-    let bestDist = 22 * 22;
+    let bestDist = maxDist * maxDist;
     for (let i = 0; i < state.points.length; i++) {
       const pos = project(state, state.points[i].x, state.points[i].y, w, h);
       const dx = pos.x - mx;
@@ -487,6 +581,13 @@
         best = i;
       }
     }
+    return best;
+  }
+
+  function updateHover(mx, my, w, h) {
+    const state = clusterState;
+    if (!state) return;
+    const best = findNearestIndex(mx, my, w, h, 22);
     if (best !== hoverIndex) {
       hoverIndex = best;
       drawMap(hoverIndex);
@@ -523,6 +624,69 @@
     drawMap(-1);
   });
 
+  mapCanvas.addEventListener("click", (e) => {
+    const rect = mapCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const idx = findNearestIndex(mx, my, rect.width, rect.height, 22);
+    if (idx >= 0) openDetail(clusterState.points[idx]);
+  });
+
+  // --- Fragrance detail modal ---
+  const detailOverlay = document.getElementById("detail-overlay");
+  const detailFamily = document.getElementById("detail-family");
+  const detailPerfume = document.getElementById("detail-perfume");
+  const detailBrand = document.getElementById("detail-brand");
+  const detailNotes = document.getElementById("detail-notes");
+  const detailSimilarity = document.getElementById("detail-similarity");
+  const detailSimilar = document.getElementById("detail-similar");
+  const detailClose = document.getElementById("detail-close");
+
+  let selectedPoint = null;
+
+  // Matches from /analyze don't carry a cluster id (only sampled /clusters
+  // points do) -- best-effort look one up by identity so the family eyebrow
+  // still shows when the fragrance happens to be in the sampled set.
+  function findFineForFragrance(point) {
+    if (point.fine !== undefined) return point.fine;
+    if (!clusterState) return undefined;
+    const hit = clusterState.points.find(
+      (p) => p.brand === point.brand && p.perfume === point.perfume && p.notes === point.notes
+    );
+    return hit ? hit.fine : undefined;
+  }
+
+  function openDetail(point, opts) {
+    selectedPoint = point;
+    const fineId = findFineForFragrance(point);
+    const fine = fineId !== undefined ? clusterState.fineLabelById[fineId] : null;
+    detailFamily.textContent = fine ? fine.label : "";
+    detailPerfume.textContent = point.perfume;
+    detailBrand.textContent = point.brand;
+    detailNotes.textContent = point.notes;
+    const similarity = opts && opts.similarity;
+    detailSimilarity.textContent = similarity != null ? `${(similarity * 100).toFixed(1)}% similar to your notes` : "";
+    detailOverlay.classList.add("visible");
+  }
+
+  function closeDetail() {
+    detailOverlay.classList.remove("visible");
+  }
+
+  detailClose.addEventListener("click", closeDetail);
+  detailOverlay.addEventListener("click", (e) => {
+    if (e.target === detailOverlay) closeDetail();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDetail();
+  });
+  detailSimilar.addEventListener("click", () => {
+    if (!selectedPoint) return;
+    notesInput.value = selectedPoint.notes;
+    closeDetail();
+    analyze();
+  });
+
   let mapResizeTimer;
   window.addEventListener("resize", () => {
     clearTimeout(mapResizeTimer);
@@ -543,10 +707,14 @@
     }
   }
 
+  function hideLoadingOverlay() {
+    document.getElementById("loading-overlay").classList.add("hidden");
+  }
+
   initTheme();
-  loadInfo();
-  loadClusters();
-  analyze();
+  const initialLoad = Promise.all([loadInfo(), loadClusters(), analyze()]);
+  const loadTimeout = new Promise((resolve) => setTimeout(resolve, 12000));
+  Promise.race([initialLoad, loadTimeout]).then(hideLoadingOverlay);
 </script>
 </body>
 </html>
