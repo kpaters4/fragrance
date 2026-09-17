@@ -33,9 +33,12 @@ RANDOM_STATE = 42
 # Each cluster's top notes are rank-weighted-voted against these subfamilies
 # and assigned to whichever scores highest, so the "type" a cluster gets is
 # derived from its actual notes rather than a run-dependent cluster index.
-# Gourmand notes (vanilla, chocolate, coffee, ...) have no family of their own
-# on the classic wheel -- they're folded into Soft Oriental / Oriental, where
-# gourmand fragrances have historically been classified.
+# This follows the 2010 revision of the wheel, where Edwards renamed the
+# "Oriental" family to "Amber" (Floral Oriental/Soft Oriental/Oriental/Woody
+# Oriental became Floral Amber/Soft Amber/Amber/Woody Amber) and "Aquatic"
+# became "Water". Gourmand notes (vanilla, chocolate, coffee, ...) have no
+# family of their own on the wheel -- they're folded into Soft Amber / Amber,
+# where gourmand fragrances have historically been classified.
 SUBFAMILY_KEYWORDS = {
     "Floral": {
         "rose", "jasmine", "floral notes", "tuberose", "freesia", "lily-of-the-valley",
@@ -44,20 +47,20 @@ SUBFAMILY_KEYWORDS = {
     "Soft Floral": {
         "violet", "iris", "heliotrope", "mimosa", "orris", "powdery notes", "aldehydes",
     },
-    "Floral Oriental": {
+    "Floral Amber": {
         "orange blossom", "ylang-ylang", "tuberose", "gardenia", "plumeria", "frangipani",
     },
-    "Soft Oriental": {
+    "Soft Amber": {
         "amber", "ambrox", "vanilla", "vanille", "tonka bean", "benzoin", "incense",
     },
-    "Oriental": {
+    "Amber": {
         "myrrh", "labdanum", "saffron", "cardamom", "cinnamon", "clove", "nutmeg",
         "chocolate", "coffee", "praline", "caramel", "honey", "almond", "coconut",
     },
-    "Woody Oriental": {
+    "Woody Amber": {
         "oud", "agarwood (oud)", "patchouli", "sandalwood", "leather", "pink pepper",
     },
-    "Woody": {
+    "Woods": {
         "sandalwood", "cedar", "vetiver", "woody notes", "woodsy notes",
     },
     "Mossy Woods": {
@@ -70,7 +73,7 @@ SUBFAMILY_KEYWORDS = {
         "citrus", "citruses", "lemon", "lime", "bergamot", "grapefruit", "orange",
         "mandarin", "petitgrain", "neroli",
     },
-    "Aquatic": {
+    "Water": {
         "aquatic", "water notes", "marine", "ozonic", "sea notes",
     },
     "Green": {
@@ -86,14 +89,14 @@ SUBFAMILY_KEYWORDS = {
 }
 
 SUBFAMILY_TO_MAIN = {
-    "Floral": "floral", "Soft Floral": "floral", "Floral Oriental": "floral",
-    "Soft Oriental": "oriental", "Oriental": "oriental", "Woody Oriental": "oriental",
-    "Woody": "woody", "Mossy Woods": "woody", "Dry Woods": "woody",
-    "Citrus": "fresh", "Aquatic": "fresh", "Green": "fresh", "Aromatic": "fresh", "Fruity": "fresh",
+    "Floral": "floral", "Soft Floral": "floral", "Floral Amber": "floral",
+    "Soft Amber": "amber", "Amber": "amber", "Woody Amber": "amber",
+    "Woods": "woody", "Mossy Woods": "woody", "Dry Woods": "woody",
+    "Citrus": "fresh", "Water": "fresh", "Green": "fresh", "Aromatic": "fresh", "Fruity": "fresh",
 }
 FAMILY_LABELS = {
     "floral": "Floral",
-    "oriental": "Oriental",
+    "amber": "Amber",
     "woody": "Woody",
     "fresh": "Fresh",
 }
@@ -135,7 +138,7 @@ def _assign_subfamilies(cluster_top_notes):
 def compute_clusters(pipeline, corpus_matrix):
     """Groups the corpus into fine-grained note clusters, each labeled with its
     best-matching Fragrance Wheel subfamily (e.g. "Dry Woods") and colored by
-    that subfamily's main wheel family (Floral/Oriental/Woody/Fresh), plus a 2D
+    that subfamily's main wheel family (Floral/Amber/Woody/Fresh), plus a 2D
     layout for plotting. Kept separate from fitting the retrieval pipeline
     since it's for the /clusters visualization, not similarity search.
     """
