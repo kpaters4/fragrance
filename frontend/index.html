@@ -4,303 +4,310 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Fragrance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Jost:wght@300;400;500&display=swap" />
 <style>
-  :root { color-scheme: light; }
+  :root[data-theme="light"] {
+    --bg: #f3f0ea; --panel: #fbfaf7; --ink: #3a3833; --muted: #857f74; --faint: #a79f92;
+    --rule: #e6e1d7; --input-rule: #cfc8bb; --accent: #6d7d6b; --on-accent: #f8f7f3;
+    --label-ink: #6d675d; --label-bg: rgba(251, 250, 247, 0.82); --track-bg: #e0dad0; --knob-left: 2px;
+    --error: #a3554c;
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1d1b; --panel: #232622; --ink: #e9e7e1; --muted: #9aa096; --faint: #75796e;
+    --rule: #32362f; --input-rule: #3f443c; --accent: #9db59a; --on-accent: #1b1d1b;
+    --label-ink: #c3c8bd; --label-bg: rgba(27, 29, 27, 0.78); --track-bg: #343a32; --knob-left: 18px;
+    --error: #d99a92;
+  }
+  * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #faf7f2;
-    color: #2b2420;
+    font-family: Jost, Helvetica, Arial, sans-serif;
+    font-weight: 300;
+    background: var(--bg);
+    color: var(--ink);
+    transition: background 0.35s ease, color 0.35s ease;
   }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
-  h1 { font-size: 1.6rem; margin-bottom: 4px; }
-  .sub { color: #7a6f63; margin-top: 0; margin-bottom: 28px; }
-  section { margin-bottom: 40px; }
-  h2 { font-size: 1.1rem; border-bottom: 1px solid #e4dcd1; padding-bottom: 8px; }
-  form { display: flex; gap: 8px; flex-wrap: wrap; }
-  input[type="text"] {
-    flex: 1 1 260px;
-    padding: 10px 12px;
-    border: 1px solid #cfc3b3;
-    border-radius: 6px;
-    font-size: 0.95rem;
+  a { color: var(--accent); text-decoration: none; }
+  input::placeholder { color: var(--faint); }
+
+  .page { min-height: 100vh; padding: 52px 20px 72px; display: flex; justify-content: center; }
+  .shell { width: 100%; max-width: 1180px; display: flex; flex-direction: column; gap: 36px; }
+
+  .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 32px; flex-wrap: wrap; }
+  .wordmark { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 300; font-size: 58px; line-height: 1; letter-spacing: 0.01em; }
+  .tagline { font-size: 17px; margin-top: 14px; letter-spacing: 0.02em; color: var(--muted); }
+  .top-right { display: flex; align-items: center; gap: 22px; }
+  .corpus-count { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--faint); min-width: 1px; }
+
+  .theme-toggle {
+    display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px;
+    border: 1px solid var(--rule); background: transparent; border-radius: 999px; cursor: pointer;
+    font-family: inherit; font-weight: 300; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--faint);
   }
-  input[type="number"] {
-    width: 70px;
-    padding: 10px 8px;
-    border: 1px solid #cfc3b3;
-    border-radius: 6px;
-    font-size: 0.95rem;
+  .track { width: 34px; height: 18px; border-radius: 999px; position: relative; display: inline-block; transition: background 0.3s ease; background: var(--track-bg); }
+  .knob { position: absolute; top: 2px; width: 14px; height: 14px; border-radius: 50%; transition: left 0.3s ease, background 0.3s ease; left: var(--knob-left); background: var(--accent); }
+
+  .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 56px; align-items: start; }
+  .eyebrow { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--faint); }
+
+  .map-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .map-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  .hover-label { font-size: 13px; color: var(--muted); }
+  .map-wrap { position: relative; height: 480px; border-radius: 18px; overflow: hidden; transition: background 0.35s ease; background: var(--panel); border: 1px solid var(--rule); }
+  .map-canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .map-labels, .map-tooltip { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  .cluster-pill {
+    position: absolute; transform: translate(-50%, -50%); font-size: 12px; letter-spacing: 0.06em;
+    padding: 4px 9px; border-radius: 999px; white-space: nowrap; color: var(--label-ink); background: var(--label-bg);
   }
-  button {
-    padding: 10px 18px;
-    border: none;
-    border-radius: 6px;
-    background: #6b4a3a;
-    color: white;
-    font-size: 0.95rem;
-    cursor: pointer;
+  .point-tooltip {
+    position: absolute; transform: translate(-50%, -135%); font-size: 12px; letter-spacing: 0.02em;
+    padding: 6px 11px; border-radius: 10px; white-space: nowrap; color: var(--label-ink); background: var(--label-bg);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12); opacity: 0; transition: opacity 0.1s ease;
   }
-  button:disabled { opacity: 0.6; cursor: default; }
-  .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
-  .stat {
-    background: white;
-    border: 1px solid #e4dcd1;
-    border-radius: 8px;
-    padding: 10px 14px;
-    min-width: 110px;
+  .point-tooltip.visible { opacity: 1; }
+  .point-tooltip .tt-brand { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+
+  .legend { display: flex; gap: 22px; flex-wrap: wrap; font-size: 13px; letter-spacing: 0.02em; color: var(--muted); }
+  .legend span.item { display: flex; align-items: center; gap: 8px; }
+  .legend .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+  .form-col { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+  .prompt-block { display: flex; flex-direction: column; gap: 16px; }
+  .prompt-title { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 300; font-size: 30px; }
+  .notes-input {
+    width: 100%; padding: 18px 0; border: none; background: transparent; font-family: inherit;
+    font-weight: 300; font-size: 17px; outline: none; border-bottom: 1px solid var(--input-rule); color: var(--ink);
   }
-  .stat .label { font-size: 0.72rem; color: #918476; text-transform: uppercase; letter-spacing: 0.04em; }
-  .stat .value { font-size: 1.15rem; font-weight: 600; }
-  ul.matches, ul.plain-list { list-style: none; padding: 0; margin: 0; }
-  ul.matches li, ul.plain-list li {
-    background: white;
-    border: 1px solid #e4dcd1;
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
+  .action-row { display: flex; gap: 14px; align-items: center; }
+  .analyze-btn {
+    padding: 15px 34px; border: none; border-radius: 999px; cursor: pointer; font-family: inherit;
+    font-weight: 400; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase;
+    transition: background 0.3s ease, opacity 0.2s ease; background: var(--accent); color: var(--on-accent);
   }
-  .match-head { display: flex; justify-content: space-between; font-weight: 600; }
-  .match-notes { color: #7a6f63; font-size: 0.85rem; margin-top: 4px; }
-  .error { color: #a33; margin-top: 10px; }
-  .muted { color: #918476; font-size: 0.9rem; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
-  .tabs button {
-    background: #efe6da;
-    color: #6b4a3a;
-    padding: 6px 14px;
-    font-size: 0.85rem;
-  }
-  .tabs button.active { background: #6b4a3a; color: white; }
-  .info-box {
-    background: #f2ece1;
-    border: 1px solid #e4dcd1;
-    border-radius: 8px;
-    padding: 14px 16px;
-    margin-bottom: 28px;
-    font-size: 0.88rem;
-    line-height: 1.5;
-    color: #4a4038;
-  }
-  .info-box strong { color: #2b2420; }
-  .cluster-wrap { position: relative; }
-  .cluster-canvas {
-    width: 100%;
-    height: 420px;
-    display: block;
-    border: 1px solid #e4dcd1;
-    border-radius: 8px;
-    background: #fcfcfb;
-    cursor: crosshair;
-  }
-  .cluster-legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; font-size: 0.82rem; color: #4a4038; }
-  .cluster-legend .swatch {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    margin-right: 6px;
-    vertical-align: middle;
-  }
-  .cluster-tooltip {
-    position: absolute;
-    pointer-events: none;
-    background: #2b2420;
-    color: #fff;
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    line-height: 1.4;
-    max-width: 220px;
-    opacity: 0;
-    transform: translate(-50%, -115%);
-    transition: opacity 0.08s ease;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
-    z-index: 5;
-    white-space: nowrap;
-  }
-  .cluster-tooltip.visible { opacity: 1; }
-  .cluster-tooltip .tt-brand { font-weight: 600; }
-  .cluster-tooltip .tt-type { color: #cfcfc9; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 2px; }
+  .analyze-btn:disabled { opacity: 0.6; cursor: default; }
+  .k-note { font-size: 13px; letter-spacing: 0.06em; color: var(--faint); }
+
+  .niche-row { display: flex; align-items: baseline; gap: 18px; }
+  .niche-score { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 300; font-size: 58px; line-height: 0.85; color: var(--accent); }
+  .niche-desc { font-size: 14px; line-height: 1.6; letter-spacing: 0.02em; color: var(--muted); }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); column-gap: 14px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); }
+  .stats-grid .stat-value { font-family: "Cormorant Garamond", serif; font-size: 30px; letter-spacing: 0; text-transform: none; margin-bottom: 4px; color: var(--ink); }
+
+  .nearest-block { display: flex; flex-direction: column; }
+  .nearest-block .eyebrow { margin-bottom: 16px; }
+  .match-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .match-perfume { font-size: 17px; font-weight: 400; }
+  .match-brand { font-size: 12px; margin-top: 4px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+  .match-sim { font-size: 14px; color: var(--accent); }
+
+  .error-text { font-size: 13px; color: var(--error); }
+  .muted-text { font-size: 13px; color: var(--muted); }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Fragrance</h1>
-  <p class="sub">Fragrance note analysis and similarity search</p>
+<div class="page">
+  <div class="shell">
 
-  <div class="info-box">
-    <strong>How it works:</strong> type in the notes of a scent you like (e.g. "sandalwood, iris, leather, musk"),
-    separated by commas, and hit Analyze. We compare that note list against a corpus of perfumes and
-    return the closest matches, weighted so rarer notes count more than common ones. Use the
-    <strong>My fragrances</strong> section below to browse your own collection and wishlist, each pre-matched
-    against the same corpus.
+    <div class="top">
+      <div>
+        <div class="wordmark">Fragrance</div>
+        <div class="tagline">A quiet map of scent. Find what sits nearest yours.</div>
+      </div>
+      <div class="top-right">
+        <div class="corpus-count" id="corpus-count"></div>
+        <button type="button" class="theme-toggle" id="theme-toggle" title="Toggle dark mode">
+          <span id="theme-label">Light</span>
+          <span class="track"><span class="knob" id="theme-knob"></span></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="columns">
+
+      <div class="map-col">
+        <div class="map-head">
+          <div class="eyebrow">The map</div>
+          <div class="hover-label" id="hover-label">hover a dot</div>
+        </div>
+        <div class="map-wrap">
+          <canvas class="map-canvas" id="map-canvas"></canvas>
+          <div class="map-labels" id="map-labels"></div>
+          <div class="map-tooltip"><div class="point-tooltip" id="point-tooltip"></div></div>
+        </div>
+        <div class="legend" id="legend"></div>
+        <div id="map-error" class="error-text"></div>
+      </div>
+
+      <div class="form-col">
+        <div class="prompt-block">
+          <div class="prompt-title">What does it smell like?</div>
+          <input type="text" id="notes-input" class="notes-input" placeholder="sandalwood, iris, leather, musk" value="sandalwood, cardamom, iris, violet, leather" />
+          <div class="action-row">
+            <button type="button" id="analyze-btn" class="analyze-btn">Analyze</button>
+            <span class="k-note">5 nearest</span>
+          </div>
+          <div id="analyze-error" class="error-text"></div>
+        </div>
+
+        <div class="niche-row">
+          <div class="niche-score" id="niche-score">—</div>
+          <div class="niche-desc" id="niche-desc">niche score<br />enter some notes to begin</div>
+        </div>
+
+        <div class="stats-grid" id="stats-grid">
+          <div><div class="stat-value">—</div>notes</div>
+          <div><div class="stat-value">—</div>known</div>
+          <div><div class="stat-value">—</div>rarity</div>
+          <div><div class="stat-value">—</div>diversity</div>
+        </div>
+
+        <div class="nearest-block">
+          <div class="eyebrow">Nearest</div>
+          <div id="matches-list"><p class="muted-text">Enter some notes and hit Analyze.</p></div>
+        </div>
+      </div>
+
+    </div>
   </div>
-
-  <section>
-    <h2>Analyze notes</h2>
-    <form id="analyze-form">
-      <input type="text" id="notes-input" placeholder="e.g. sandalwood, iris, leather, musk" required />
-      <input type="number" id="k-input" min="1" max="20" value="5" title="number of matches" />
-      <button type="submit" id="analyze-btn">Analyze</button>
-    </form>
-    <div id="analyze-error" class="error"></div>
-    <div id="analyze-results"></div>
-  </section>
-
-  <section>
-    <h2>My fragrances</h2>
-    <div class="tabs">
-      <button id="tab-collection" class="active">Collection</button>
-      <button id="tab-wishlist">Wishlist</button>
-    </div>
-    <div id="list-error" class="error"></div>
-    <ul class="plain-list" id="list-results"><li class="muted">Loading…</li></ul>
-  </section>
-
-  <section>
-    <h2>Fragrance clusters</h2>
-    <p class="muted" style="margin-top: -4px;">
-      Every perfume in the corpus, positioned by how similar its full note list is to its neighbors —
-      perfumes built from the same kind of notes sit close together. Clusters are auto-labeled by
-      their most defining notes and colored by broad family. Hover a dot for details.
-    </p>
-    <div id="clusters-error" class="error"></div>
-    <div class="cluster-wrap">
-      <canvas id="clusters-canvas" class="cluster-canvas"></canvas>
-      <div id="clusters-tooltip" class="cluster-tooltip"></div>
-    </div>
-    <div class="cluster-legend" id="clusters-legend"></div>
-  </section>
 </div>
 
 <script>
   // Must point at the deployed Modal URL. No localhost, no mocked data.
   const API_BASE = "https://kpaters4--scent-fingerprint-fastapi-app.modal.run";
 
-  const analyzeForm = document.getElementById("analyze-form");
+  const FAMILY_ORDER = ["fresh", "aromatic_aquatic", "floral", "woody", "oriental_amber", "gourmand"];
+  const SPA_LIGHT = ["#9aab94", "#93a5ad", "#c0a2a8", "#a89478", "#c2a07e", "#b3a58c"];
+  const SPA_DARK = ["#8fae92", "#8ba7b5", "#c2a0ab", "#ab977a", "#c7a681", "#b5a891"];
+
+  function familyColor(familyId, dark) {
+    const idx = FAMILY_ORDER.indexOf(familyId);
+    const palette = dark ? SPA_DARK : SPA_LIGHT;
+    return palette[idx >= 0 ? idx : 0];
+  }
+
+  // --- Theme ---
+  const root = document.documentElement;
+  const themeToggle = document.getElementById("theme-toggle");
+  const themeLabel = document.getElementById("theme-label");
+
+  function isDark() { return root.getAttribute("data-theme") === "dark"; }
+
+  function applyTheme(dark) {
+    root.setAttribute("data-theme", dark ? "dark" : "light");
+    themeLabel.textContent = dark ? "Dark" : "Light";
+    if (clusterState) drawMap(hoverIndex);
+    renderLegend();
+  }
+
+  function initTheme() {
+    let stored = null;
+    try { stored = localStorage.getItem("fragrance-theme"); } catch (e) {}
+    applyTheme(stored === "dark");
+  }
+
+  themeToggle.addEventListener("click", () => {
+    const dark = !isDark();
+    try { localStorage.setItem("fragrance-theme", dark ? "dark" : "light"); } catch (e) {}
+    applyTheme(dark);
+  });
+
+  // --- Header corpus count ---
+  async function loadInfo() {
+    try {
+      const res = await fetch(`${API_BASE}/info`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      document.getElementById("corpus-count").textContent = `${data.corpus_size.toLocaleString()} perfumes`;
+    } catch (e) {
+      document.getElementById("corpus-count").textContent = "";
+    }
+  }
+
+  // --- Analyze ---
   const notesInput = document.getElementById("notes-input");
-  const kInput = document.getElementById("k-input");
   const analyzeBtn = document.getElementById("analyze-btn");
   const analyzeError = document.getElementById("analyze-error");
-  const analyzeResults = document.getElementById("analyze-results");
+  const nicheScoreEl = document.getElementById("niche-score");
+  const nicheDescEl = document.getElementById("niche-desc");
+  const statsGrid = document.getElementById("stats-grid");
+  const matchesList = document.getElementById("matches-list");
 
   function renderStats(stats) {
-    return `
-      <div class="stats-row">
-        <div class="stat"><div class="label">Notes</div><div class="value">${stats.note_count}</div></div>
-        <div class="stat"><div class="label">Known</div><div class="value">${stats.known_note_count}</div></div>
-        <div class="stat"><div class="label">Avg rarity</div><div class="value">${stats.avg_rarity.toFixed(2)}</div></div>
-        <div class="stat"><div class="label">Diversity</div><div class="value">${(stats.diversity * 100).toFixed(0)}%</div></div>
-        <div class="stat"><div class="label">Niche score</div><div class="value">${stats.niche_score.toFixed(0)}</div></div>
-      </div>
-      <p class="muted" style="margin-top: -8px;">${stats.niche_percentile_label}</p>`;
+    statsGrid.innerHTML = `
+      <div><div class="stat-value">${stats.note_count}</div>notes</div>
+      <div><div class="stat-value">${stats.known_note_count}</div>known</div>
+      <div><div class="stat-value">${stats.avg_rarity.toFixed(2)}</div>rarity</div>
+      <div><div class="stat-value">${(stats.diversity * 100).toFixed(0)}%</div>diversity</div>`;
+  }
+
+  function renderNiche(stats) {
+    nicheScoreEl.textContent = stats.niche_score.toFixed(0);
+    nicheDescEl.innerHTML = `niche score<br />quieter than ${stats.niche_score.toFixed(0)}% of the corpus`;
   }
 
   function renderMatches(matches) {
-    if (!matches.length) return '<p class="muted">No matches found.</p>';
-    const items = matches.map(m => `
-      <li>
-        <div class="match-head">
-          <span>${m.brand} — ${m.perfume}</span>
-          <span>${(m.similarity * 100).toFixed(1)}%</span>
+    if (!matches.length) {
+      matchesList.innerHTML = '<p class="muted-text">No matches found.</p>';
+      return;
+    }
+    matchesList.innerHTML = matches.map(m => `
+      <div class="match-row">
+        <div>
+          <div class="match-perfume">${m.perfume}</div>
+          <div class="match-brand">${m.brand}</div>
         </div>
-        <div class="match-notes">${m.notes}</div>
-      </li>`).join("");
-    return `<ul class="matches">${items}</ul>`;
+        <div class="match-sim">${(m.similarity * 100).toFixed(1)}%</div>
+      </div>`).join("");
   }
 
-  analyzeForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    analyzeError.textContent = "";
-    analyzeResults.innerHTML = "";
+  async function analyze() {
     const notes = notesInput.value.split(",").map(n => n.trim()).filter(Boolean);
-    const k = parseInt(kInput.value, 10) || 5;
-
+    analyzeError.textContent = "";
     if (!notes.length) {
       analyzeError.textContent = "Enter at least one note.";
       return;
     }
-
     analyzeBtn.disabled = true;
-    analyzeBtn.textContent = "Analyzing…";
-
+    analyzeBtn.textContent = "Reading…";
     try {
       const res = await fetch(`${API_BASE}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes, k }),
+        body: JSON.stringify({ notes, k: 5 }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail ? JSON.stringify(body.detail) : `Request failed (${res.status})`);
       }
       const data = await res.json();
-      analyzeResults.innerHTML = renderStats(data.stats) + renderMatches(data.matches);
+      renderStats(data.stats);
+      renderNiche(data.stats);
+      renderMatches(data.matches);
     } catch (err) {
       analyzeError.textContent = err.message || "Something went wrong.";
     } finally {
       analyzeBtn.disabled = false;
       analyzeBtn.textContent = "Analyze";
     }
-  });
-
-  const tabCollection = document.getElementById("tab-collection");
-  const tabWishlist = document.getElementById("tab-wishlist");
-  const listResults = document.getElementById("list-results");
-  const listError = document.getElementById("list-error");
-
-  function renderList(rows) {
-    if (!rows.length) return '<li class="muted">Nothing here yet.</li>';
-    return rows.map(row => `
-      <li>
-        <div class="match-head"><span>${row.brand} — ${row.perfume}</span></div>
-        <div class="match-notes">${row.notes}</div>
-        <div class="match-notes">Closest match: ${row.matches[0] ? `${row.matches[0].brand} — ${row.matches[0].perfume} (${(row.matches[0].similarity * 100).toFixed(1)}%)` : "n/a"}</div>
-      </li>`).join("");
   }
 
-  async function loadList(endpoint) {
-    listError.textContent = "";
-    listResults.innerHTML = '<li class="muted">Loading…</li>';
-    try {
-      const res = await fetch(`${API_BASE}${endpoint}`);
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      const data = await res.json();
-      listResults.innerHTML = renderList(data);
-    } catch (err) {
-      listResults.innerHTML = "";
-      listError.textContent = err.message || "Failed to load.";
-    }
-  }
-
-  tabCollection.addEventListener("click", () => {
-    tabCollection.classList.add("active");
-    tabWishlist.classList.remove("active");
-    loadList("/collection");
-  });
-  tabWishlist.addEventListener("click", () => {
-    tabWishlist.classList.add("active");
-    tabCollection.classList.remove("active");
-    loadList("/wishlist");
+  analyzeBtn.addEventListener("click", analyze);
+  notesInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") analyze();
   });
 
-  loadList("/collection");
-
-  // --- Fragrance clusters ---
-  const FAMILY_COLORS = {
-    fresh: "#2a78d6",
-    floral: "#eb6834",
-    woody: "#1baf7a",
-    aromatic_aquatic: "#eda100",
-    oriental_amber: "#e87ba4",
-    gourmand: "#008300",
-  };
-
-  const clustersCanvas = document.getElementById("clusters-canvas");
-  const clustersTooltip = document.getElementById("clusters-tooltip");
-  const clustersLegend = document.getElementById("clusters-legend");
-  const clustersError = document.getElementById("clusters-error");
+  // --- The map ---
+  const mapCanvas = document.getElementById("map-canvas");
+  const mapLabels = document.getElementById("map-labels");
+  const pointTooltip = document.getElementById("point-tooltip");
+  const hoverLabelEl = document.getElementById("hover-label");
+  const legendEl = document.getElementById("legend");
+  const mapError = document.getElementById("map-error");
 
   let clusterState = null;
   let hoverIndex = -1;
@@ -313,25 +320,12 @@
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
-  function roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
   function project(state, x, y, w, h) {
-    const pad = 30;
+    const pad = 26;
     const { minX, maxX, minY, maxY } = state.bounds;
     const sx = (x - minX) / ((maxX - minX) || 1);
     const sy = (y - minY) / ((maxY - minY) || 1);
-    return {
-      x: pad + sx * (w - pad * 2),
-      y: pad + (1 - sy) * (h - pad * 2),
-    };
+    return { x: pad + sx * (w - pad * 2), y: pad + (1 - sy) * (h - pad * 2) };
   }
 
   function buildClusterState(data) {
@@ -363,35 +357,89 @@
     const fineLabelById = {};
     data.fine_clusters.forEach((fc) => { fineLabelById[fc.id] = fc; });
 
-    return { points, bounds: { minX, maxX, minY, maxY }, fineCentroids, fineLabelById };
+    return { points, families: data.families, bounds: { minX, maxX, minY, maxY }, fineCentroids, fineLabelById };
   }
 
-  function setupClusterLegend(families) {
-    clustersLegend.innerHTML = "";
-    families.forEach((fam) => {
-      const item = document.createElement("span");
-      const swatch = document.createElement("span");
-      swatch.className = "swatch";
-      swatch.style.background = FAMILY_COLORS[fam.id] || "#999";
-      item.appendChild(swatch);
-      item.appendChild(document.createTextNode(fam.label));
-      clustersLegend.appendChild(item);
+  function renderLegend() {
+    if (!clusterState) return;
+    const dark = isDark();
+    legendEl.innerHTML = clusterState.families.map((fam) => `
+      <span class="item"><span class="dot" style="background:${familyColor(fam.id, dark)}"></span>${fam.label}</span>
+    `).join("");
+  }
+
+  function measureLabelBox(text) {
+    return { w: text.length * 6.4 + 18, h: 22 };
+  }
+
+  // Cluster centroids can sit close together in embedding space, which makes
+  // their label pills overlap. Nudge colliding pairs apart along whichever
+  // axis needs the smaller push, rather than showing stacked illegible text.
+  function declutterLabels(labels, w, h) {
+    const boxes = labels.map((l) => ({ ...l, ...measureLabelBox(l.text) }));
+    for (let iter = 0; iter < 40; iter++) {
+      let moved = false;
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i], b = boxes[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const overlapX = (a.w + b.w) / 2 - Math.abs(dx);
+          const overlapY = (a.h + b.h) / 2 - Math.abs(dy);
+          if (overlapX > 0 && overlapY > 0) {
+            moved = true;
+            if (overlapX < overlapY) {
+              const push = overlapX / 2 + 1;
+              const dir = dx === 0 ? (i < j ? -1 : 1) : Math.sign(dx);
+              a.x -= dir * push;
+              b.x += dir * push;
+            } else {
+              const push = overlapY / 2 + 1;
+              const dir = dy === 0 ? -1 : Math.sign(dy);
+              a.y -= dir * push;
+              b.y += dir * push;
+            }
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    boxes.forEach((b) => {
+      b.x = Math.min(w - b.w / 2 - 4, Math.max(b.w / 2 + 4, b.x));
+      b.y = Math.min(h - b.h / 2 - 4, Math.max(b.h / 2 + 4, b.y));
     });
+    return boxes;
   }
 
-  function drawClusters(highlightIndex) {
+  function renderClusterLabels() {
+    if (!clusterState) return;
+    const rect = mapCanvas.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    const raw = Object.keys(clusterState.fineCentroids).map((id) => {
+      const meta = clusterState.fineLabelById[id];
+      const c = clusterState.fineCentroids[id];
+      const pos = project(clusterState, c.x, c.y, w, h);
+      return meta ? { text: meta.label, x: pos.x, y: pos.y } : null;
+    }).filter(Boolean);
+    const placed = declutterLabels(raw, w, h);
+    mapLabels.innerHTML = placed.map((l) =>
+      `<span class="cluster-pill" style="left:${l.x}px; top:${l.y}px;">${l.text}</span>`
+    ).join("");
+  }
+
+  function drawMap(highlightIndex) {
     const state = clusterState;
     if (!state) return;
-    const canvas = clustersCanvas;
+    const dark = isDark();
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
+    const rect = mapCanvas.getBoundingClientRect();
     const w = Math.max(1, Math.round(rect.width));
     const h = Math.max(1, Math.round(rect.height));
-    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
+    if (mapCanvas.width !== w * dpr || mapCanvas.height !== h * dpr) {
+      mapCanvas.width = w * dpr;
+      mapCanvas.height = h * dpr;
     }
-    const ctx = canvas.getContext("2d");
+    const ctx = mapCanvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
@@ -399,69 +447,36 @@
       if (i === highlightIndex) return;
       const pos = project(state, p.x, p.y, w, h);
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 2, 0, Math.PI * 2);
-      ctx.fillStyle = hexToRgba(FAMILY_COLORS[p.family] || "#999", 0.5);
+      ctx.arc(pos.x, pos.y, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = hexToRgba(familyColor(p.family, dark), dark ? 0.72 : 0.6);
       ctx.fill();
-    });
-
-    ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    Object.keys(state.fineCentroids).forEach((id) => {
-      const meta = state.fineLabelById[id];
-      if (!meta) return;
-      const c = state.fineCentroids[id];
-      const pos = project(state, c.x, c.y, w, h);
-      const text = meta.label;
-      const metrics = ctx.measureText(text);
-      const boxW = metrics.width + 12;
-      const boxH = 20;
-      ctx.fillStyle = "rgba(250, 247, 242, 0.88)";
-      roundRect(ctx, pos.x - boxW / 2, pos.y - boxH / 2, boxW, boxH, 6);
-      ctx.fill();
-      ctx.fillStyle = "#4a4038";
-      ctx.fillText(text, pos.x, pos.y + 0.5);
     });
 
     if (highlightIndex >= 0) {
       const p = state.points[highlightIndex];
       const pos = project(state, p.x, p.y, w, h);
-      const color = FAMILY_COLORS[p.family] || "#999";
+      const color = familyColor(p.family, dark);
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
+      ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = dark ? "#1b1d1b" : "#fbfaf7";
       ctx.fill();
       ctx.lineWidth = 2;
       ctx.strokeStyle = color;
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 2.2, 0, Math.PI * 2);
+      ctx.arc(pos.x, pos.y, 2, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
     }
-  }
 
-  function showTooltip(point, mx, my) {
-    clustersTooltip.innerHTML = "";
-    const brandLine = document.createElement("div");
-    brandLine.className = "tt-brand";
-    brandLine.textContent = `${point.brand} — ${point.perfume}`;
-    const typeLine = document.createElement("div");
-    typeLine.className = "tt-type";
-    const fine = clusterState.fineLabelById[point.fine];
-    typeLine.textContent = fine ? fine.label : "";
-    clustersTooltip.appendChild(brandLine);
-    clustersTooltip.appendChild(typeLine);
-    clustersTooltip.style.left = `${mx}px`;
-    clustersTooltip.style.top = `${my}px`;
-    clustersTooltip.classList.add("visible");
+    renderClusterLabels();
   }
 
   function updateHover(mx, my, w, h) {
     const state = clusterState;
     if (!state) return;
     let best = -1;
-    let bestDist = 24 * 24;
+    let bestDist = 22 * 22;
     for (let i = 0; i < state.points.length; i++) {
       const pos = project(state, state.points[i].x, state.points[i].y, w, h);
       const dx = pos.x - mx;
@@ -474,17 +489,24 @@
     }
     if (best !== hoverIndex) {
       hoverIndex = best;
-      drawClusters(hoverIndex);
+      drawMap(hoverIndex);
     }
     if (best >= 0) {
-      showTooltip(state.points[best], mx, my);
+      const p = state.points[best];
+      const fine = state.fineLabelById[p.fine];
+      hoverLabelEl.textContent = fine ? fine.label : "";
+      pointTooltip.innerHTML = `<div class="tt-brand">${p.brand}</div>${p.perfume}`;
+      pointTooltip.style.left = `${mx}px`;
+      pointTooltip.style.top = `${my}px`;
+      pointTooltip.classList.add("visible");
     } else {
-      clustersTooltip.classList.remove("visible");
+      hoverLabelEl.textContent = "hover a dot";
+      pointTooltip.classList.remove("visible");
     }
   }
 
-  clustersCanvas.addEventListener("mousemove", (e) => {
-    const rect = clustersCanvas.getBoundingClientRect();
+  mapCanvas.addEventListener("mousemove", (e) => {
+    const rect = mapCanvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     if (hoverRAF) return;
@@ -494,33 +516,37 @@
     });
   });
 
-  clustersCanvas.addEventListener("mouseleave", () => {
+  mapCanvas.addEventListener("mouseleave", () => {
     hoverIndex = -1;
-    clustersTooltip.classList.remove("visible");
-    drawClusters(-1);
+    hoverLabelEl.textContent = "hover a dot";
+    pointTooltip.classList.remove("visible");
+    drawMap(-1);
   });
 
-  let clusterResizeTimer;
+  let mapResizeTimer;
   window.addEventListener("resize", () => {
-    clearTimeout(clusterResizeTimer);
-    clusterResizeTimer = setTimeout(() => drawClusters(hoverIndex), 120);
+    clearTimeout(mapResizeTimer);
+    mapResizeTimer = setTimeout(() => drawMap(hoverIndex), 120);
   });
 
   async function loadClusters() {
-    clustersError.textContent = "";
+    mapError.textContent = "";
     try {
       const res = await fetch(`${API_BASE}/clusters`);
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
-      setupClusterLegend(data.families);
       clusterState = buildClusterState(data);
-      drawClusters(-1);
+      renderLegend();
+      drawMap(-1);
     } catch (err) {
-      clustersError.textContent = err.message || "Failed to load clusters.";
+      mapError.textContent = err.message || "Failed to load the map.";
     }
   }
 
+  initTheme();
+  loadInfo();
   loadClusters();
+  analyze();
 </script>
 </body>
 </html>
