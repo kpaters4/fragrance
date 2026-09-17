@@ -249,6 +249,7 @@
   .compare-arc { cursor: pointer; transition: opacity 0.15s ease; }
   .compare-link { fill: none; transition: opacity 0.2s ease, stroke-width 0.2s ease; }
   .compare-link-hit { fill: none; stroke: transparent; stroke-width: 10px; cursor: pointer; }
+  .compare-node-catchment { fill: transparent; stroke: none; cursor: pointer; }
   .compare-node-label { font-family: Jost, Helvetica, Arial, sans-serif; font-size: 10.5px; fill: var(--muted); pointer-events: none; transition: fill 0.15s ease; user-select: none; }
   .compare-node-label.active { fill: var(--ink); }
   .compare-tooltip {
@@ -1427,16 +1428,18 @@
   // (nothing actively hovered) fallback. Cleared by clicking the same node
   // again or clicking outside the diagram.
   let pinnedCompare = null;
-  // Hovering a ribbon spotlights the whole group on whichever side of the
-  // circle the cursor is nearer -- the wheel subfamily's spread if you're
-  // over the left half, the emerged cluster's spread if you're over the
-  // right half -- rather than highlighting both endpoints' groups at once,
-  // which read as "highlighting all over the place". Only kicks in at rest
-  // (nothing hovered/pinned already); once something is selected, ribbon
-  // hover is for reading tooltips instead, not for changing what's
-  // highlighted.
+  // Hovering a ribbon spotlights the whole group on whichever end you're
+  // over -- the wheel subfamily's spread at its wheel-side base, the
+  // emerged cluster's spread at its emerged-side base -- rather than
+  // highlighting both endpoints' groups at once, which read as
+  // "highlighting all over the place". Only kicks in at rest (nothing
+  // hovered/pinned already); once something is selected, ribbon hover is
+  // for reading tooltips instead, not for changing what's highlighted.
   let hoveredCompareLink = null; // { l, side: "wheel"|"emerged" }
 
+  // Used only along the ribbon's curved body (away from its two base
+  // wedges, see wireLinkHit) where a single hit region has to cover both
+  // possible sides -- picks whichever half of the circle the cursor is in.
   function cmpSideFromEvent(e) {
     const rect = compareSvg.getBoundingClientRect();
     const localX = (e.clientX - rect.left) / rect.width * 640;
@@ -1486,6 +1489,10 @@
   // (proportional to each link's count), ordered by the counterpart node's
   // angle so ribbons from the same node cross each other as little as
   // possible on their way across the circle.
+  // Returns each link's own [a0, a1] slice of the node's arc (not just its
+  // midpoint) -- used both to anchor the ribbon's visible curve (at the
+  // midpoint) and to size a wedge-shaped hover/click hitbox matching that
+  // slice's actual width, since the width is what's proportional to count.
   function cmpSubdivide(node, links, otherMidById) {
     const sorted = [...links].sort((a, b) => otherMidById(a) - otherMidById(b));
     const total = sorted.reduce((s, l) => s + l.count, 0) || 1;
@@ -1494,8 +1501,9 @@
     const out = new Map();
     sorted.forEach((l) => {
       const w = (l.count / total) * span;
-      out.set(l, angle + w / 2);
-      angle += w;
+      const a0 = angle, a1 = angle + w;
+      out.set(l, { a0, a1, mid: (a0 + a1) / 2 });
+      angle = a1;
     });
     return out;
   }
@@ -1579,12 +1587,54 @@
     const linkEls = [];
     const nodeEls = [];
 
+    // A ribbon's hit region is a stroke traced along its visible curve --
+    // hovering it anywhere along its body picks the side from which half of
+    // the circle the cursor is in (see cmpSideFromEvent). Near a node's
+    // base, several thin ribbons can converge tightly enough that the gaps
+    // between them have no curve to land on at all; that dead space is
+    // covered separately by each node's own inward "catchment" wedge (see
+    // addNode below), which falls back to highlighting the whole node
+    // rather than expecting a precise single ribbon to be hit.
+    function wireLinkHit(el, l, sideOf) {
+      el.addEventListener("mouseenter", (e) => {
+        const pct = Math.round((l.count / wheelById[l.wheel].count) * 100);
+        cmpShowTooltip(e, `<div class="tt-brand">${l.count.toLocaleString()} fragrances</div>${wheelById[l.wheel].label} &rarr; ${emergedById[l.emerged].label} (${pct}%)`);
+        if (!hoveredCompare && !pinnedCompare) {
+          hoveredCompareLink = { l, side: sideOf(e) };
+          updateCompareHighlight();
+        }
+      });
+      el.addEventListener("mousemove", (e) => {
+        cmpShowTooltip(e, compareTooltip.innerHTML);
+        if (!hoveredCompare && !pinnedCompare) {
+          const side = sideOf(e);
+          if (!hoveredCompareLink || hoveredCompareLink.l !== l || hoveredCompareLink.side !== side) {
+            hoveredCompareLink = { l, side };
+            updateCompareHighlight();
+          }
+        }
+      });
+      el.addEventListener("mouseleave", () => {
+        cmpHideTooltip();
+        if (hoveredCompareLink && hoveredCompareLink.l === l) {
+          hoveredCompareLink = null;
+          updateCompareHighlight();
+        }
+      });
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const side = sideOf(e);
+        hoveredCompareLink = null;
+        toggleComparePin(side, side === "wheel" ? l.wheel : l.emerged);
+      });
+    }
+
     links.forEach((l) => {
-      const a1 = wheelSub[`${l.wheel}|${l.emerged}`];
-      const a2 = emergedSub[`${l.wheel}|${l.emerged}`];
-      if (a1 === undefined || a2 === undefined) return;
-      const p1 = cmpPolar(CMP.rInner, a1);
-      const p2 = cmpPolar(CMP.rInner, a2);
+      const wheelSlice = wheelSub[`${l.wheel}|${l.emerged}`];
+      const emergedSlice = emergedSub[`${l.wheel}|${l.emerged}`];
+      if (!wheelSlice || !emergedSlice) return;
+      const p1 = cmpPolar(CMP.rInner, wheelSlice.mid);
+      const p2 = cmpPolar(CMP.rInner, emergedSlice.mid);
       const d = `M ${p1.x} ${p1.y} Q ${CMP.cx} ${CMP.cy} ${p2.x} ${p2.y}`;
       const width = Math.max(0.6, (l.count / maxCount) * 9);
       const restVisible = l.count >= Math.max(15, 0.03 * wheelById[l.wheel].count);
@@ -1592,37 +1642,7 @@
       const hit = document.createElementNS(svgNS, "path");
       hit.setAttribute("d", d);
       hit.setAttribute("class", "compare-link-hit");
-      hit.addEventListener("mouseenter", (e) => {
-        const pct = Math.round((l.count / wheelById[l.wheel].count) * 100);
-        cmpShowTooltip(e, `<div class="tt-brand">${l.count.toLocaleString()} fragrances</div>${wheelById[l.wheel].label} &rarr; ${emergedById[l.emerged].label} (${pct}%)`);
-        if (!hoveredCompare && !pinnedCompare) {
-          hoveredCompareLink = { l, side: cmpSideFromEvent(e) };
-          updateCompareHighlight();
-        }
-      });
-      hit.addEventListener("mousemove", (e) => {
-        cmpShowTooltip(e, compareTooltip.innerHTML);
-        if (!hoveredCompare && !pinnedCompare) {
-          const side = cmpSideFromEvent(e);
-          if (!hoveredCompareLink || hoveredCompareLink.l !== l || hoveredCompareLink.side !== side) {
-            hoveredCompareLink = { l, side };
-            updateCompareHighlight();
-          }
-        }
-      });
-      hit.addEventListener("mouseleave", () => {
-        cmpHideTooltip();
-        if (hoveredCompareLink && hoveredCompareLink.l === l) {
-          hoveredCompareLink = null;
-          updateCompareHighlight();
-        }
-      });
-      hit.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const side = cmpSideFromEvent(e);
-        hoveredCompareLink = null;
-        toggleComparePin(side, side === "wheel" ? l.wheel : l.emerged);
-      });
+      wireLinkHit(hit, l, cmpSideFromEvent);
       linksLayer.appendChild(hit);
 
       const path = document.createElementNS(svgNS, "path");
@@ -1636,17 +1656,37 @@
       linkEls.push({ l, path, hit, width, restVisible });
     });
 
+    // How far inside rInner a node's catchment wedge (below) extends, to
+    // swallow the "dead space" between its thin ribbons near the base.
+    const NODE_CATCHMENT_DEPTH = 50;
+
     function addNode(node, side, fill) {
+      const wireNodeHover = (el) => {
+        el.addEventListener("mouseenter", () => { hoveredCompare = { side, id: String(node.id) }; updateCompareHighlight(); });
+        el.addEventListener("mouseleave", () => { hoveredCompare = null; updateCompareHighlight(); });
+        el.addEventListener("mousemove", (e) => cmpShowTooltip(e, `<div class="tt-brand">${node.count.toLocaleString()} fragrances</div>${node.label}`));
+        el.addEventListener("mouseleave", cmpHideTooltip);
+        el.addEventListener("click", (e) => { e.stopPropagation(); toggleComparePin(side, String(node.id)); });
+      };
+
       const arc = document.createElementNS(svgNS, "path");
       arc.setAttribute("d", cmpArcPath(CMP.rInner, CMP.rOuter, node.a0, node.a1));
       arc.setAttribute("class", "compare-arc");
       arc.setAttribute("fill", fill);
-      arc.addEventListener("mouseenter", () => { hoveredCompare = { side, id: String(node.id) }; updateCompareHighlight(); });
-      arc.addEventListener("mouseleave", () => { hoveredCompare = null; updateCompareHighlight(); });
-      arc.addEventListener("mousemove", (e) => cmpShowTooltip(e, `<div class="tt-brand">${node.count.toLocaleString()} fragrances</div>${node.label}`));
-      arc.addEventListener("mouseleave", cmpHideTooltip);
-      arc.addEventListener("click", (e) => { e.stopPropagation(); toggleComparePin(side, String(node.id)); });
+      wireNodeHover(arc);
       nodesLayer.appendChild(arc);
+
+      // Where several of this node's ribbons converge tightly, the gaps
+      // between their thin curves have no ribbon to hover at all -- rather
+      // than expecting a precise hit on one specific ribbon there, this
+      // wedge extends the node's own hoverable area inward past rInner so
+      // that gap still counts as hovering the node (see wireLinkHit's
+      // comment for how individual ribbons stay hoverable further out).
+      const catchment = document.createElementNS(svgNS, "path");
+      catchment.setAttribute("d", cmpArcPath(CMP.rInner - NODE_CATCHMENT_DEPTH, CMP.rInner, node.a0, node.a1));
+      catchment.setAttribute("class", "compare-node-catchment");
+      wireNodeHover(catchment);
+      nodesLayer.appendChild(catchment);
 
       const { x, y, rotate, anchor } = cmpLabelAttrs(node.mid, CMP.rLabel);
       const text = document.createElementNS(svgNS, "text");
@@ -1689,13 +1729,12 @@
     // still highlights whatever's under the cursor, and only falls back to
     // the pinned one when you're not actively hovering anything.
     const current = hoveredCompare || pinnedCompare;
-    // A hovered ribbon highlights the group on whichever side of the
-    // circle the cursor is over (see cmpSideFromEvent) -- resolved down to
-    // the same { side, id } shape a real node hover produces, so it drives
-    // the exact same highlight logic below. Only kicks in when nothing
-    // else is already selected -- once a node is hovered/pinned, ribbon
-    // hover goes back to just being a tooltip trigger (see the hit
-    // mouseenter/mousemove/mouseleave handlers, which only set this while
+    // A hovered ribbon (see wireLinkHit) highlights the group on whichever
+    // side was hovered -- resolved down to the same { side, id } shape a
+    // real node hover produces, so it drives the exact same highlight
+    // logic below. Only kicks in when nothing else is already selected --
+    // once a node is hovered/pinned, ribbon hover goes back to just being
+    // a tooltip trigger (see wireLinkHit, which only sets this while
     // current is falsy).
     const link = !current ? hoveredCompareLink : null;
     const effective = current || (link && {
