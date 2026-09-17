@@ -2,7 +2,7 @@
 
 Live site: https://fragrance-azure.vercel.app/
 
-Finds perfumes with similar scent profiles by comparing their listed notes, groups the whole corpus into fragrance-wheel-style scent families for an interactive cluster map, and scores how "niche" any note list is relative to everything else in the corpus. Notes are converted into TF-IDF-style vectors and matched against a corpus via cosine nearest-neighbors, so "sandalwood, cardamom, iris" finds perfumes that share the same rare/common note mix rather than just an exact-string match.
+Finds perfumes with similar scent profiles by comparing their listed notes, groups the whole corpus into families from the Michael Edwards Fragrance Wheel for an interactive cluster map, and scores how "niche" any note list is relative to everything else in the corpus. Notes are converted into TF-IDF-style vectors and matched against a corpus via cosine nearest-neighbors, so "sandalwood, cardamom, iris" finds perfumes that share the same rare/common note mix rather than just an exact-string match.
 
 ## The model
 
@@ -53,7 +53,7 @@ Composed after `NoteFingerprint` (`Pipeline([("fingerprint", NoteFingerprint()),
 | `/collection` | GET | Rows from the Supabase `collection` table, scored live against the corpus |
 | `/wishlist` | GET | Rows from the Supabase `wishlist` table, scored live against the corpus |
 | `/analyze` | POST | Score an arbitrary note list against the corpus (similarity matches + niche score) |
-| `/clusters` | GET | A sampled, 2D-projected view of the corpus grouped into 9 note-based clusters folded into 6 fragrance-wheel-style families (Fresh & Citrus, Aromatic & Aquatic, Floral, Woody, Oriental & Amber, Gourmand), for the clusters visualization |
+| `/clusters` | GET | A sampled, 2D-projected view of the corpus grouped into 14 note-based clusters, each labeled with a named subfamily from the Michael Edwards Fragrance Wheel (e.g. "Dry Woods") and colored by that subfamily's main wheel family (Floral, Oriental, Woody, Fresh), for the clusters visualization |
 
 `/collection` and `/wishlist` query Supabase **live, on every request** — unlike the corpus, they're small (a handful of rows) and change often, so it's cheaper to fetch-then-score them per request than to keep a stale pre-scored copy in `pipeline.joblib`. Both are scored through the same `_score()` helper `/analyze` uses, so the response shape is consistent everywhere: a `stats` object (see above) plus a `matches` array of the top-`k` nearest corpus perfumes, each with `brand`, `perfume`, `notes`, and `similarity` (cosine similarity, 0–1).
 

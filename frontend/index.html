@@ -179,7 +179,7 @@
     <div class="top">
       <div>
         <div class="wordmark">Fragrance Map</div>
-        <div class="tagline">A quiet map of scent. Find what sits nearest yours.</div>
+        <div class="tagline">Explore fragrances by their notes and find similar ones.</div>
       </div>
       <div class="top-right">
         <div class="corpus-count" id="corpus-count"></div>
@@ -233,9 +233,10 @@
   // Must point at the deployed Modal URL. No localhost, no mocked data.
   const API_BASE = "https://kpaters4--scent-fingerprint-fastapi-app.modal.run";
 
-  const FAMILY_ORDER = ["fresh", "aromatic_aquatic", "floral", "woody", "oriental_amber", "gourmand"];
-  const SPA_LIGHT = ["#9aab94", "#93a5ad", "#c0a2a8", "#a89478", "#c2a07e", "#b3a58c"];
-  const SPA_DARK = ["#8fae92", "#8ba7b5", "#c2a0ab", "#ab977a", "#c7a681", "#b5a891"];
+  // Matches build.py's FAMILY_LABELS -- the 4 main families of the Fragrance Wheel.
+  const FAMILY_ORDER = ["floral", "oriental", "woody", "fresh"];
+  const SPA_LIGHT = ["#c0a2a8", "#c2a07e", "#a89478", "#9aab94"];
+  const SPA_DARK = ["#c2a0ab", "#c7a681", "#ab977a", "#8fae92"];
 
   function familyColor(familyId, dark) {
     const idx = FAMILY_ORDER.indexOf(familyId);

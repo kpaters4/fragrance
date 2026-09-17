@@ -23,74 +23,98 @@ from pipeline_def import NicheScorer, NoteFingerprint
 ARTIFACT_PATH = "pipeline.joblib"
 MIN_DF = 2
 PAGE_SIZE = 1000
-N_FINE_CLUSTERS = 9
+# One cluster per named subfamily on the Michael Edwards Fragrance Wheel (see
+# SUBFAMILY_KEYWORDS below) -- the standard reference wheel this taxonomy follows.
+N_FINE_CLUSTERS = 14
 NICHE_K_NEIGHBORS = 10
 RANDOM_STATE = 42
 
-# Rank-weighted keyword vote: each cluster's top notes are scored against these
-# families and assigned to whichever scores highest, so the "type" a cluster
-# gets is derived from its actual notes rather than a run-dependent cluster index.
-FAMILY_KEYWORDS = {
-    "fresh": {
-        "citrus", "citruses", "lemon", "lime", "bergamot", "grapefruit", "orange",
-        "green notes", "green", "petitgrain", "neroli",
-    },
-    "aromatic_aquatic": {
-        "lavender", "mint", "aquatic", "water notes", "marine", "ozonic",
-        "aromatic", "juniper", "rosemary", "sage", "sea notes",
-    },
-    "floral": {
+# The Fragrance Wheel's 4 main families, each split into named subfamilies.
+# Each cluster's top notes are rank-weighted-voted against these subfamilies
+# and assigned to whichever scores highest, so the "type" a cluster gets is
+# derived from its actual notes rather than a run-dependent cluster index.
+# Gourmand notes (vanilla, chocolate, coffee, ...) have no family of their own
+# on the classic wheel -- they're folded into Soft Oriental / Oriental, where
+# gourmand fragrances have historically been classified.
+SUBFAMILY_KEYWORDS = {
+    "Floral": {
         "rose", "jasmine", "floral notes", "tuberose", "freesia", "lily-of-the-valley",
-        "peony", "violet", "iris", "orange blossom", "ylang-ylang", "heliotrope",
-        "geranium", "magnolia", "mimosa",
+        "peony", "geranium", "magnolia", "gardenia",
     },
-    "woody": {
-        # "musk" is deliberately excluded: it's the single most common note in
-        # the corpus, so it shows up in most clusters' top notes regardless of
-        # family and would swamp the vote rather than discriminate.
-        "oud", "agarwood (oud)", "sandalwood", "cedar", "vetiver", "leather",
-        "tobacco", "woody notes", "woodsy notes", "patchouli", "oakmoss", "birch",
+    "Soft Floral": {
+        "violet", "iris", "heliotrope", "mimosa", "orris", "powdery notes", "aldehydes",
     },
-    "oriental_amber": {
-        "amber", "ambrox", "incense", "benzoin", "myrrh", "labdanum",
-        "saffron", "cardamom", "pink pepper",
+    "Floral Oriental": {
+        "orange blossom", "ylang-ylang", "tuberose", "gardenia", "plumeria", "frangipani",
     },
-    "gourmand": {
-        "vanilla", "vanille", "tonka bean", "praline", "caramel", "chocolate",
-        "honey", "coffee", "almond", "coconut",
+    "Soft Oriental": {
+        "amber", "ambrox", "vanilla", "vanille", "tonka bean", "benzoin", "incense",
     },
+    "Oriental": {
+        "myrrh", "labdanum", "saffron", "cardamom", "cinnamon", "clove", "nutmeg",
+        "chocolate", "coffee", "praline", "caramel", "honey", "almond", "coconut",
+    },
+    "Woody Oriental": {
+        "oud", "agarwood (oud)", "patchouli", "sandalwood", "leather", "pink pepper",
+    },
+    "Woody": {
+        "sandalwood", "cedar", "vetiver", "woody notes", "woodsy notes",
+    },
+    "Mossy Woods": {
+        "oakmoss", "moss", "vetiver", "patchouli",
+    },
+    "Dry Woods": {
+        "birch", "tobacco", "leather", "dry woods", "guaiac wood",
+    },
+    "Citrus": {
+        "citrus", "citruses", "lemon", "lime", "bergamot", "grapefruit", "orange",
+        "mandarin", "petitgrain", "neroli",
+    },
+    "Water": {
+        "aquatic", "water notes", "marine", "ozonic", "sea notes",
+    },
+    "Green": {
+        "green notes", "green", "galbanum", "violet leaf", "grass",
+    },
+    "Aromatic": {
+        "lavender", "mint", "rosemary", "sage", "basil", "aromatic", "juniper", "thyme",
+    },
+    "Fruity": {
+        "apple", "peach", "pear", "berries", "black currant", "cassis", "mango",
+        "pineapple", "strawberry", "raspberry", "melon", "litchi",
+    },
+}
+
+SUBFAMILY_TO_MAIN = {
+    "Floral": "floral", "Soft Floral": "floral", "Floral Oriental": "floral",
+    "Soft Oriental": "oriental", "Oriental": "oriental", "Woody Oriental": "oriental",
+    "Woody": "woody", "Mossy Woods": "woody", "Dry Woods": "woody",
+    "Citrus": "fresh", "Water": "fresh", "Green": "fresh", "Aromatic": "fresh", "Fruity": "fresh",
 }
 FAMILY_LABELS = {
-    "fresh": "Fresh & Citrus",
-    "aromatic_aquatic": "Aromatic & Aquatic",
     "floral": "Floral",
+    "oriental": "Oriental",
     "woody": "Woody",
-    "oriental_amber": "Oriental & Amber",
-    "gourmand": "Gourmand",
+    "fresh": "Fresh",
 }
 
 
-def _clean_note_name(note):
-    if "(" in note:
-        return note.split("(", 1)[1].rstrip(")").strip().title()
-    return note.replace(" notes", "").strip().title()
-
-
-def _classify_family(top_notes):
-    scores = {family: 0.0 for family in FAMILY_KEYWORDS}
+def _classify_subfamily(top_notes):
+    scores = {subfamily: 0.0 for subfamily in SUBFAMILY_KEYWORDS}
     for rank, note in enumerate(top_notes):
         weight = 1.0 / (rank + 1)
-        for family, keywords in FAMILY_KEYWORDS.items():
+        for subfamily, keywords in SUBFAMILY_KEYWORDS.items():
             if note in keywords:
-                scores[family] += weight
+                scores[subfamily] += weight
     return max(scores, key=scores.get)
 
 
 def compute_clusters(pipeline, corpus_matrix):
-    """Groups the corpus into fine-grained note clusters (for descriptive
-    labels) folded into 3 broad families (fresh/floral/woody) for coloring,
-    plus a 2D layout for plotting. Kept separate from fitting the retrieval
-    pipeline since it's for the /clusters visualization, not similarity search.
+    """Groups the corpus into fine-grained note clusters, each labeled with its
+    best-matching Fragrance Wheel subfamily (e.g. "Dry Woods") and colored by
+    that subfamily's main wheel family (Floral/Oriental/Woody/Fresh), plus a 2D
+    layout for plotting. Kept separate from fitting the retrieval pipeline
+    since it's for the /clusters visualization, not similarity search.
     """
     vocab = pipeline.named_steps["fingerprint"].vocabulary_
     inv_vocab = {idx: note for note, idx in vocab.items()}
@@ -106,11 +130,10 @@ def compute_clusters(pipeline, corpus_matrix):
         center = kmeans.cluster_centers_[cluster_id]
         top_idx = np.argsort(center)[::-1][:6]
         top_notes = [inv_vocab[i] for i in top_idx if center[i] > 0]
-        family = _classify_family(top_notes)
-        label = " & ".join(_clean_note_name(n) for n in top_notes[:2]) or FAMILY_LABELS[family]
+        subfamily = _classify_subfamily(top_notes)
         fine_meta[cluster_id] = {
-            "label": label,
-            "family": family,
+            "label": subfamily,
+            "family": SUBFAMILY_TO_MAIN[subfamily],
             "count": int(np.sum(fine_labels == cluster_id)),
         }
 
