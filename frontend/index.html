@@ -175,6 +175,15 @@
   </div>
 </div>
 
+<div class="detail-overlay" id="info-overlay">
+  <div class="detail-card">
+    <button type="button" class="detail-close" id="info-close" aria-label="Close">&times;</button>
+    <div class="detail-family" id="info-eyebrow"></div>
+    <div class="detail-perfume" id="info-title"></div>
+    <div class="detail-notes" id="info-body"></div>
+  </div>
+</div>
+
 <div class="page">
   <div class="shell">
 
@@ -246,6 +255,59 @@
     return palette[idx >= 0 ? idx : 0];
   }
 
+  // Short descriptions for the click-to-learn-more popup, keyed the same way
+  // build.py keys FAMILY_LABELS / SUBFAMILY_KEYWORDS.
+  const MAIN_FAMILY_INFO = {
+    floral: "Fragrances built around flower notes -- the largest and most classic family, spanning delicate single-flower scents to warm, spice-laced florals.",
+    oriental: "Warm, rich, and sweet -- built on amber, resins, spices, and vanilla. Long-lasting and sensual; modern gourmand desserts-in-a-bottle scents live here too.",
+    woody: "Dry, earthy, and grounding -- sandalwood, cedar, vetiver, and mossy or smoky woods anchor these fragrances, often as a base for other families.",
+    fresh: "Light and energizing -- citrus, green leaves, aquatic air, herbs, and fruit. The most casual, everyday-wearing family.",
+  };
+  const SUBFAMILY_INFO = {
+    "Floral": "Rose, jasmine, and other flowers front and center, without much sweetness or spice layered on top.",
+    "Soft Floral": "Powdery, delicate florals -- violet, iris, and aldehydes give a soft, almost powdered-skin feel.",
+    "Floral Oriental": "Heady white flowers like tuberose and ylang-ylang, warmed with a touch of spice or amber.",
+    "Soft Oriental": "A gentler amber -- vanilla, benzoin, and incense, without the full spice-and-resin intensity of a true Oriental.",
+    "Oriental": "Rich amber, resins, and warm spices -- cardamom, cinnamon, incense -- often with a sweet, gourmand edge from vanilla or praline.",
+    "Woody Oriental": "Oud, patchouli, and sandalwood meeting amber and spice -- dark, dense, and long-lasting.",
+    "Woody": "Straightforward wood -- sandalwood, cedar, vetiver -- dry and grounding without much sweetness.",
+    "Mossy Woods": "Earthy oakmoss and patchouli give an old-school, green-wood depth.",
+    "Dry Woods": "Smokier, drier woods -- birch, leather, tobacco -- with a rougher, more austere edge.",
+    "Citrus": "Bright bergamot, lemon, and orange peel -- the classic, zesty top-note family.",
+    "Aquatic": "Clean, airy \"sea breeze\" notes -- marine and ozonic accords that evoke water rather than any actual flower or wood.",
+    "Green": "Crushed leaves and stems -- galbanum and violet leaf give a sharp, just-cut-grass freshness.",
+    "Aromatic": "Herbal notes -- lavender, rosemary, mint -- giving a cool, savory freshness rather than a fruity or floral one.",
+    "Fruity": "Ripe orchard and berry fruit -- peach, apple, black currant -- usually layered into a floral or gourmand base rather than standing alone.",
+  };
+
+  // --- Learn-more popup (families and subfamilies) ---
+  const infoOverlay = document.getElementById("info-overlay");
+  const infoEyebrow = document.getElementById("info-eyebrow");
+  const infoTitle = document.getElementById("info-title");
+  const infoBody = document.getElementById("info-body");
+  const infoClose = document.getElementById("info-close");
+
+  function familyLabel(familyId) {
+    const fam = clusterState && clusterState.families.find((f) => f.id === familyId);
+    return fam ? fam.label : familyId;
+  }
+
+  function openInfo(eyebrow, title, body) {
+    infoEyebrow.textContent = eyebrow;
+    infoTitle.textContent = title;
+    infoBody.textContent = body || "";
+    infoOverlay.classList.add("visible");
+  }
+
+  function closeInfo() {
+    infoOverlay.classList.remove("visible");
+  }
+
+  infoClose.addEventListener("click", closeInfo);
+  infoOverlay.addEventListener("click", (e) => {
+    if (e.target === infoOverlay) closeInfo();
+  });
+
   // --- Theme ---
   const root = document.documentElement;
   const themeToggle = document.getElementById("theme-toggle");
@@ -256,7 +318,7 @@
   function applyTheme(dark) {
     root.setAttribute("data-theme", dark ? "dark" : "light");
     themeLabel.textContent = dark ? "Dark" : "Light";
-    if (clusterState) drawMap(hoverIndex);
+    if (clusterState) drawDots(hoverIndex);
     renderLegend();
   }
 
@@ -429,12 +491,18 @@
         hoveredFamily = el.dataset.family;
         hoveredFine = null;
         el.classList.add("active");
-        drawMap(hoverIndex);
+        drawDots(hoverIndex);
+        updateLabelActiveStates();
       });
       el.addEventListener("mouseleave", () => {
         hoveredFamily = null;
         el.classList.remove("active");
-        drawMap(hoverIndex);
+        drawDots(hoverIndex);
+        updateLabelActiveStates();
+      });
+      el.addEventListener("click", () => {
+        const fam = clusterState.families.find((f) => f.id === el.dataset.family);
+        if (fam) openInfo("Fragrance Wheel family", fam.label, MAIN_FAMILY_INFO[fam.id]);
       });
     });
   }
@@ -492,27 +560,38 @@
       const meta = clusterState.fineLabelById[id];
       const c = clusterState.fineCentroids[id];
       const pos = project(clusterState, c.x, c.y, w, h);
-      return meta ? { id, text: meta.label, x: pos.x, y: pos.y } : null;
+      return meta ? { id, text: meta.label, family: meta.family, x: pos.x, y: pos.y } : null;
     }).filter(Boolean);
     const placed = declutterLabels(raw, w, h);
-    mapLabels.innerHTML = placed.map((l) =>
-      `<span class="cluster-pill${l.id === hoveredFine ? " active" : ""}" data-fine="${l.id}" style="left:${l.x}px; top:${l.y}px;">${l.text}</span>`
-    ).join("");
+    mapLabels.innerHTML = placed.map((l) => {
+      const isActive = l.id === hoveredFine || (hoveredFamily && l.family === hoveredFamily);
+      return `<span class="cluster-pill${isActive ? " active" : ""}" data-fine="${l.id}" style="left:${l.x}px; top:${l.y}px;">${l.text}</span>`;
+    }).join("");
     mapLabels.querySelectorAll(".cluster-pill").forEach((el) => {
       el.addEventListener("mouseenter", () => {
         hoveredFine = el.dataset.fine;
         hoveredFamily = null;
         renderLegend();
-        drawMap(hoverIndex);
+        drawDots(hoverIndex);
+        updateLabelActiveStates();
       });
       el.addEventListener("mouseleave", () => {
         hoveredFine = null;
-        drawMap(hoverIndex);
+        drawDots(hoverIndex);
+        updateLabelActiveStates();
+      });
+      el.addEventListener("click", () => {
+        const meta = clusterState.fineLabelById[el.dataset.fine];
+        if (meta) openInfo(familyLabel(meta.family), meta.label, SUBFAMILY_INFO[meta.label]);
       });
     });
   }
 
-  function drawMap(highlightIndex) {
+  // Draws only the canvas dots/highlight ring. Deliberately does NOT touch
+  // the .cluster-pill DOM (see renderClusterLabels) -- rebuilding label
+  // elements on every hover tick used to destroy the pill mid-click before
+  // its click event could fire, silently swallowing clicks on labels.
+  function drawDots(highlightIndex) {
     const state = clusterState;
     if (!state) return;
     const dark = isDark();
@@ -557,8 +636,24 @@
       ctx.fillStyle = color;
       ctx.fill();
     }
+  }
 
+  // Full redraw: dots + repositioning the label pills. Only needed when
+  // positions can actually change (initial load, resize) -- not on hover.
+  function redrawMap(highlightIndex) {
+    drawDots(highlightIndex);
     renderClusterLabels();
+  }
+
+  // Toggles .active on existing pill elements without touching the DOM tree,
+  // so a click on a pill can't be lost to a mid-interaction rebuild.
+  function updateLabelActiveStates() {
+    if (!clusterState) return;
+    mapLabels.querySelectorAll(".cluster-pill").forEach((el) => {
+      const meta = clusterState.fineLabelById[el.dataset.fine];
+      const isActive = el.dataset.fine === hoveredFine || (hoveredFamily && meta && meta.family === hoveredFamily);
+      el.classList.toggle("active", isActive);
+    });
   }
 
   function findNearestIndex(mx, my, w, h, maxDist) {
@@ -585,7 +680,7 @@
     const best = findNearestIndex(mx, my, w, h, 22);
     if (best !== hoverIndex) {
       hoverIndex = best;
-      drawMap(hoverIndex);
+      drawDots(hoverIndex);
     }
     if (best >= 0) {
       const p = state.points[best];
@@ -616,7 +711,7 @@
     hoverIndex = -1;
     hoverLabelEl.textContent = "hover a dot";
     pointTooltip.classList.remove("visible");
-    drawMap(-1);
+    drawDots(-1);
   });
 
   mapCanvas.addEventListener("click", (e) => {
@@ -673,7 +768,10 @@
     if (e.target === detailOverlay) closeDetail();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeDetail();
+    if (e.key === "Escape") {
+      closeDetail();
+      closeInfo();
+    }
   });
   detailSimilar.addEventListener("click", () => {
     if (!selectedPoint) return;
@@ -685,7 +783,7 @@
   let mapResizeTimer;
   window.addEventListener("resize", () => {
     clearTimeout(mapResizeTimer);
-    mapResizeTimer = setTimeout(() => drawMap(hoverIndex), 120);
+    mapResizeTimer = setTimeout(() => redrawMap(hoverIndex), 120);
   });
 
   async function loadClusters() {
@@ -696,7 +794,7 @@
       const data = await res.json();
       clusterState = buildClusterState(data);
       renderLegend();
-      drawMap(-1);
+      redrawMap(-1);
     } catch (err) {
       mapError.textContent = err.message || "Failed to load the map.";
     }

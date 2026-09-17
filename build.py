@@ -70,7 +70,7 @@ SUBFAMILY_KEYWORDS = {
         "citrus", "citruses", "lemon", "lime", "bergamot", "grapefruit", "orange",
         "mandarin", "petitgrain", "neroli",
     },
-    "Water": {
+    "Aquatic": {
         "aquatic", "water notes", "marine", "ozonic", "sea notes",
     },
     "Green": {
@@ -89,7 +89,7 @@ SUBFAMILY_TO_MAIN = {
     "Floral": "floral", "Soft Floral": "floral", "Floral Oriental": "floral",
     "Soft Oriental": "oriental", "Oriental": "oriental", "Woody Oriental": "oriental",
     "Woody": "woody", "Mossy Woods": "woody", "Dry Woods": "woody",
-    "Citrus": "fresh", "Water": "fresh", "Green": "fresh", "Aromatic": "fresh", "Fruity": "fresh",
+    "Citrus": "fresh", "Aquatic": "fresh", "Green": "fresh", "Aromatic": "fresh", "Fruity": "fresh",
 }
 FAMILY_LABELS = {
     "floral": "Floral",
