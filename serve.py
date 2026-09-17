@@ -48,10 +48,40 @@ class AnalyzeRequest(BaseModel):
     k: int = Field(default=5, ge=1, le=20)
 
 
+class LocateRequest(BaseModel):
+    query: Annotated[str, Field(min_length=1, max_length=100)]
+
+
+def _point_for_index(idx, similarity=None):
+    """Every field the frontend needs to place and label a single fragrance
+    on the map -- its position and both groupings (wheel subfamily, emerged
+    cluster) -- looked up from the full corpus, not the ~4,000-point /clusters
+    sample. Used both by /locate and to enrich /analyze's (and
+    /collection's, /wishlist's) matches, so a popup opened from any of those
+    lists can always show where that fragrance actually sits, not just ones
+    that happened to land in the map's sample.
+    """
+    data = _bundle["clusters"]
+    doc = _bundle["corpus_documents"][idx]
+    subfamily = str(data["wheel_label"][idx])
+    point = {
+        "x": round(float(data["x"][idx]), 3),
+        "y": round(float(data["y"][idx]), 3),
+        "wheel": subfamily,
+        "emerged": int(data["emerged_cluster"][idx]),
+        "family": data["wheel_meta"][subfamily]["family"],
+        "brand": doc["brand"],
+        "perfume": doc["perfume"],
+        "notes": doc["notes"],
+    }
+    if similarity is not None:
+        point["similarity"] = similarity
+    return point
+
+
 def _score(notes_string, k=5):
     pipeline = _bundle["pipeline"]
     neighbor_index = _bundle["neighbor_index"]
-    corpus_documents = _bundle["corpus_documents"]
 
     fingerprint = pipeline.named_steps["fingerprint"]
     niche = pipeline.named_steps["niche"]
@@ -72,12 +102,7 @@ def _score(notes_string, k=5):
 
     distances, indices = neighbor_index.kneighbors(vector, n_neighbors=k)
     matches = [
-        {
-            "brand": corpus_documents[idx]["brand"],
-            "perfume": corpus_documents[idx]["perfume"],
-            "notes": corpus_documents[idx]["notes"],
-            "similarity": float(1 - dist),
-        }
+        _point_for_index(int(idx), similarity=float(1 - dist))
         for dist, idx in zip(distances[0], indices[0])
     ]
     return stats, matches
@@ -143,6 +168,14 @@ _clusters_cache = None
 
 @app.get("/clusters")
 def clusters():
+    """Two independent groupings of the same sampled points, sharing the same
+    (x, y) position for each: `wheel` (every fragrance classified directly
+    against the 14 named Fragrance Wheel subfamilies) and `emerged` (which of
+    the EMERGED_CLUSTERS data-driven KMeans clusters it landed in, with no
+    knowledge of the wheel). See build.py's compute_clusters for how each is
+    derived. The frontend toggles which one drives dot coloring/labels; both
+    are always present on every point so switching views needs no refetch.
+    """
     if not _artifact_loaded():
         raise HTTPException(status_code=503, detail="artifact not loaded")
 
@@ -150,29 +183,35 @@ def clusters():
     if _clusters_cache is None:
         data = _bundle["clusters"]
         corpus_documents = _bundle["corpus_documents"]
-        fine_cluster = data["fine_cluster"]
+        wheel_label = data["wheel_label"]
+        emerged_cluster = data["emerged_cluster"]
         xs, ys = data["x"], data["y"]
-        fine_meta = data["fine_meta"]
+        wheel_meta = data["wheel_meta"]
+        emerged_meta = data["emerged_meta"]
         family_labels = data["family_labels"]
 
         rng = random.Random(42)
-        by_fine = {}
-        for idx, fine_id in enumerate(fine_cluster):
-            by_fine.setdefault(int(fine_id), []).append(idx)
+        # Sampled proportionally by wheel subfamily (not emerged cluster) so
+        # every named subfamily keeps visible representation on the map even
+        # though the two groupings carve up the corpus differently.
+        by_wheel = {}
+        for idx, subfamily in enumerate(wheel_label):
+            by_wheel.setdefault(str(subfamily), []).append(idx)
 
         total = len(corpus_documents)
         points = []
-        for fine_id, indices in by_fine.items():
+        for subfamily, indices in by_wheel.items():
             quota = max(1, round(len(indices) / total * CLUSTER_SAMPLE_SIZE))
             chosen = indices if len(indices) <= quota else rng.sample(indices, quota)
-            family = fine_meta[fine_id]["family"]
+            family = wheel_meta[subfamily]["family"]
             for idx in chosen:
                 doc = corpus_documents[idx]
                 points.append(
                     {
                         "x": round(float(xs[idx]), 3),
                         "y": round(float(ys[idx]), 3),
-                        "fine": fine_id,
+                        "wheel": subfamily,
+                        "emerged": int(emerged_cluster[idx]),
                         "family": family,
                         "brand": doc["brand"],
                         "perfume": doc["perfume"],
@@ -180,17 +219,22 @@ def clusters():
                     }
                 )
 
-        present_families = {meta["family"] for meta in fine_meta.values()}
+        present_families = {meta["family"] for meta in wheel_meta.values()}
         _clusters_cache = {
             "families": [
                 {"id": fam, "label": label}
                 for fam, label in family_labels.items()
                 if fam in present_families
             ],
-            "fine_clusters": [
-                {"id": fine_id, "label": meta["label"], "family": meta["family"], "count": meta["count"]}
-                for fine_id, meta in sorted(fine_meta.items())
+            "wheel_subfamilies": [
+                {"id": subfamily, "label": meta["label"], "family": meta["family"], "count": meta["count"]}
+                for subfamily, meta in wheel_meta.items()
             ],
+            "emerged_clusters": [
+                {"id": cid, "label": meta["label"], "count": meta["count"]}
+                for cid, meta in sorted(emerged_meta.items())
+            ],
+            "contingency": data["contingency"],
             "points": points,
         }
 
@@ -208,3 +252,58 @@ def analyze(request: AnalyzeRequest):
 
     stats, matches = _score(notes_string, request.k)
     return {"stats": stats, "matches": matches}
+
+
+def _rank_name_match(doc, q_lower):
+    perfume = doc["perfume"].lower()
+    brand = doc["brand"].lower()
+    if perfume == q_lower:
+        return 0
+    if perfume.startswith(q_lower):
+        return 1
+    if brand.startswith(q_lower):
+        return 2
+    if q_lower in perfume:
+        return 3
+    return 4  # only the brand contains it, substring mid-word
+
+
+@app.post("/locate")
+def locate(request: LocateRequest):
+    """Finds a specific fragrance to show on the map, by name or by notes.
+    Name match (brand/perfume) is tried first over the *full* corpus, not
+    just the /clusters sample, so any fragrance that exists can be found.
+    If nothing matches by name, the query is treated as a notes list instead
+    and resolved to the nearest real fragrances by note similarity -- the
+    same matching /analyze uses, just returning full corpus rows.
+    """
+    if not _artifact_loaded():
+        raise HTTPException(status_code=503, detail="artifact not loaded")
+
+    query = request.query.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="query must not be empty")
+
+    corpus_documents = _bundle["corpus_documents"]
+    q_lower = query.lower()
+    name_hits = [
+        idx for idx, doc in enumerate(corpus_documents)
+        if q_lower in f"{doc['brand']} {doc['perfume']}".lower()
+    ]
+    if name_hits:
+        name_hits.sort(key=lambda idx: (_rank_name_match(corpus_documents[idx], q_lower), corpus_documents[idx]["perfume"]))
+        return {"mode": "name", "results": [_point_for_index(idx) for idx in name_hits[:8]]}
+
+    notes_string = ", ".join(n.strip() for n in query.split(",") if n.strip())
+    if not notes_string:
+        return {"mode": "name", "results": []}
+    stats, matches = _score(notes_string, k=5)
+    # A nearest-neighbor search always returns its k closest points, even
+    # when the query matched nothing real -- there's no "no match" case in
+    # kneighbors() itself. If none of the typed words are notes the corpus
+    # actually knows (a typo, a nonexistent fragrance name, gibberish),
+    # those "nearest" results are meaningless noise, not a real match, so
+    # report no results instead of quietly recommending unrelated fragrances.
+    if stats["known_note_count"] == 0:
+        return {"mode": "notes", "results": []}
+    return {"mode": "notes", "results": matches}

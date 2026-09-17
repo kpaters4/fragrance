@@ -9,6 +9,7 @@ import json
 
 import joblib
 import numpy as np
+import scipy.sparse as sp
 import sklearn
 from sklearn.cluster import KMeans
 from sklearn.decomposition import TruncatedSVD
@@ -28,19 +29,15 @@ PAGE_SIZE = 1000
 # as its own constant so retuning the map's resolution never silently
 # changes niche scoring.
 NICHE_CLUSTERS = 14
-# The map's fine-grained clustering -- one per named Fragrance Wheel
-# subfamily (see SUBFAMILY_KEYWORDS below). A higher value here lets rare
-# subfamilies (aquatic, fruity, dry-wood notes) get a cluster that's
-# genuinely dominated by their notes instead of forcing a 14-way bijection
-# onto whatever's left over -- but the /clusters 2D layout (a fixed t-SNE
-# perplexity, see compute_clusters) wasn't built to visually resolve much
-# more than ~14 regions, so raising this without also retuning that layout
-# makes individual clusters look scattered on the map even when they're
-# genuinely cohesive in the underlying note vectors.
-MAP_FINE_CLUSTERS = 14
-# How many of a cluster's top centroid-weighted notes get scored against the
-# subfamily keyword sets when labeling it.
-TOP_NOTES_FOR_LABELING = 10
+# The map's second, data-driven view: how the corpus's note vectors group on
+# their own, independent of the Fragrance Wheel entirely. Picked via
+# scripts/elbow_analysis.py (see README) rather than hand-fixed -- KMeans
+# inertia and silhouette score both plateau smoothly with no sharp knee
+# (perfume notes blend continuously; this corpus doesn't split into a small
+# number of naturally separable archetypes), so k=22 was chosen as the
+# elbow point: close enough to the wheel's 14 subfamilies that the two views
+# stay comparable side by side on the map.
+EMERGED_CLUSTERS = 22
 NICHE_K_NEIGHBORS = 10
 RANDOM_STATE = 42
 
@@ -161,85 +158,72 @@ FAMILY_LABELS = {
 }
 
 
-def _score_subfamilies(top_notes):
-    scores = {subfamily: 0.0 for subfamily in SUBFAMILY_KEYWORDS}
-    for rank, note in enumerate(top_notes):
-        weight = 1.0 / (rank + 1)
-        for subfamily, keywords in SUBFAMILY_KEYWORDS.items():
-            if note in keywords:
-                scores[subfamily] += weight
-    return scores
+def _classify_wheel_subfamilies(corpus_matrix, vocab):
+    """Classifies every fragrance directly against its own note vector,
+    independent of any clustering. Each fragrance is scored against all 14
+    subfamily keyword sets -- summing the IDF weight of every one of its own
+    notes that's a keyword for that subfamily -- and assigned to whichever
+    scores highest.
 
-
-def _assign_subfamilies(cluster_top_notes):
-    """Assigns each cluster to its best-matching Fragrance Wheel subfamily, in
-    two passes:
-
-    1. Coverage pass -- same greedy claiming as a strict one-to-one mapping
-       (strongest-scoring (cluster, subfamily) pairs claimed first), but only
-       until every subfamily has claimed exactly one cluster. This guarantees
-       every named subfamily is used at least once, by its single best-fitting
-       cluster out of all of them -- even a rare subfamily like Water still
-       gets a real match rather than being forced onto whatever's left over.
-    2. Free pass -- every remaining, unclaimed cluster independently picks
-       whichever subfamily scores highest for it, with no uniqueness
-       constraint. A broad subfamily like Floral or Amber naturally ends up
-       covering several clusters this way, since the corpus has many
-       distinct flavors of it; a narrow one just doesn't gain any more.
+    This replaced an earlier design that clustered first (KMeans) and then
+    tried to name each cluster after the fact by matching its centroid's top
+    notes. That indirection broke in two ways: some subfamilies (aquatic,
+    dry-wood notes) were almost never any single cluster's dominant
+    character, so they got forced onto whatever cluster was left over with
+    zero real match; and giving KMeans enough clusters to fix that meant the
+    2D map layout could no longer visually resolve them. Classifying each
+    fragrance directly against its own notes sidesteps both: it doesn't rely
+    on an intermediate unsupervised grouping lining up with a taxonomy it
+    was never trying to reproduce, so it's implemented as a single sparse
+    matrix multiply (corpus vectors x a keyword indicator matrix) rather
+    than a per-cluster loop.
     """
-    scores = {cid: _score_subfamilies(notes) for cid, notes in cluster_top_notes.items()}
-    candidates = sorted(
-        ((scores[cid][sub], cid, sub) for cid in scores for sub in SUBFAMILY_KEYWORDS),
-        key=lambda t: t[0],
-        reverse=True,
+    subfamilies = list(SUBFAMILY_KEYWORDS)
+    n_vocab = corpus_matrix.shape[1]
+    rows, cols = [], []
+    for col, subfamily in enumerate(subfamilies):
+        for keyword in SUBFAMILY_KEYWORDS[subfamily]:
+            if keyword in vocab:
+                rows.append(vocab[keyword])
+                cols.append(col)
+    keyword_mask = sp.csr_matrix(
+        (np.ones(len(rows)), (rows, cols)), shape=(n_vocab, len(subfamilies))
     )
-    assigned = {}
-    claimed = set()
-    for _, cid, sub in candidates:
-        if len(claimed) == len(SUBFAMILY_KEYWORDS):
-            break
-        if cid in assigned or sub in claimed:
-            continue
-        assigned[cid] = sub
-        claimed.add(sub)
-    for cid, subfamily_scores in scores.items():
-        if cid not in assigned:
-            assigned[cid] = max(subfamily_scores, key=subfamily_scores.get)
-    return assigned
+    scores = np.asarray((corpus_matrix @ keyword_mask).todense())
+    best = scores.argmax(axis=1)
+    return np.array(subfamilies)[best]
 
 
 def compute_clusters(pipeline, corpus_matrix):
-    """Groups the corpus into fine-grained note clusters, each labeled with its
-    best-matching Fragrance Wheel subfamily (e.g. "Dry Woods") and colored by
-    that subfamily's main wheel family (Floral/Amber/Woody/Fresh), plus a 2D
-    layout for plotting. Kept separate from fitting the retrieval pipeline
-    since it's for the /clusters visualization, not similarity search.
+    """Builds the /clusters map's two independent views of the same corpus:
+
+    - The classic Fragrance Wheel view -- every fragrance classified
+      directly against the 14 named subfamilies by its own notes (see
+      _classify_wheel_subfamilies).
+    - The emerged view -- unsupervised KMeans on the same note vectors, with
+      no knowledge of the wheel at all; each cluster is auto-labeled by its
+      own top 2 notes (e.g. "Oud & Patchouli") rather than matched to a
+      wheel name.
+
+    Both views share the same 2D t-SNE layout, so a fragrance's position on
+    the map never changes between them -- only how it's grouped/labeled
+    does, which is what makes the two comparable side by side.
     """
     vocab = pipeline.named_steps["fingerprint"].vocabulary_
     inv_vocab = {idx: note for note, idx in vocab.items()}
 
     norm_matrix = normalize(corpus_matrix)
 
-    print("Fitting fine clusters...")
-    kmeans = KMeans(n_clusters=MAP_FINE_CLUSTERS, random_state=RANDOM_STATE, n_init=10)
-    fine_labels = kmeans.fit_predict(norm_matrix)
-
-    cluster_top_notes = {}
-    for cluster_id in range(MAP_FINE_CLUSTERS):
-        center = kmeans.cluster_centers_[cluster_id]
-        top_idx = np.argsort(center)[::-1][:TOP_NOTES_FOR_LABELING]
-        cluster_top_notes[cluster_id] = [inv_vocab[i] for i in top_idx if center[i] > 0]
-
-    subfamily_by_cluster = _assign_subfamilies(cluster_top_notes)
-
-    fine_meta = {}
-    for cluster_id in range(MAP_FINE_CLUSTERS):
-        subfamily = subfamily_by_cluster[cluster_id]
-        fine_meta[cluster_id] = {
+    print("Classifying fragrances against the Fragrance Wheel...")
+    wheel_labels = _classify_wheel_subfamilies(corpus_matrix, vocab)
+    wheel_meta = {
+        subfamily: {
             "label": subfamily,
             "family": SUBFAMILY_TO_MAIN[subfamily],
-            "count": int(np.sum(fine_labels == cluster_id)),
+            "count": int(np.sum(wheel_labels == subfamily)),
         }
+        for subfamily in SUBFAMILY_KEYWORDS
+    }
 
     print("Reducing dimensionality for layout...")
     reduced = TruncatedSVD(n_components=30, random_state=RANDOM_STATE).fit_transform(norm_matrix)
@@ -249,12 +233,57 @@ def compute_clusters(pipeline, corpus_matrix):
         n_components=2, random_state=RANDOM_STATE, init="pca", perplexity=30
     ).fit_transform(reduced)
 
+    print(f"Fitting {EMERGED_CLUSTERS} emerged clusters on the 2D layout...")
+    # Clustered on the map's own (x, y) coordinates, not the pre-embedding
+    # note vectors. KMeans and t-SNE optimize different things (closest
+    # centroid vs. preserving local neighbors), so clustering the
+    # 1133-dimension vectors let the two disagree about what's "nearby" --
+    # a cluster could be perfectly reasonable in note-vector space and still
+    # scatter across the whole map, since t-SNE was never told about it.
+    # Clustering the 2D output directly makes "emerged cluster" and "a
+    # region you can see on the map" the same thing by construction, at the
+    # cost of using less information than the full note vectors held (see
+    # README). Each cluster's label still comes from real notes: after
+    # KMeans assigns 2D memberships, average those members' original
+    # fingerprint vectors to get a pseudo-centroid and take its top notes.
+    kmeans = KMeans(n_clusters=EMERGED_CLUSTERS, random_state=RANDOM_STATE, n_init=10)
+    emerged_labels = kmeans.fit_predict(coords)
+    emerged_meta = {}
+    for cluster_id in range(EMERGED_CLUSTERS):
+        member_idx = np.where(emerged_labels == cluster_id)[0]
+        pseudo_centroid = np.asarray(corpus_matrix[member_idx].mean(axis=0)).ravel()
+        top_idx = np.argsort(pseudo_centroid)[::-1][:2]
+        top_notes = [inv_vocab[i].title() for i in top_idx if pseudo_centroid[i] > 0]
+        emerged_meta[cluster_id] = {
+            "label": " & ".join(top_notes) if top_notes else f"Cluster {cluster_id}",
+            "count": int(len(member_idx)),
+        }
+
+    # Exact wheel x emerged-cluster crosstab over the full corpus (not the
+    # ~4,000-point map sample) -- how many fragrances of each wheel
+    # subfamily landed in each emerged cluster. This is what the wheel vs.
+    # emerged comparison diagram is built from: a subfamily whose members
+    # concentrate into one or two emerged clusters is a real point of
+    # agreement between the classic wheel and the data; one spread thin
+    # across most of the EMERGED_CLUSTERS is a point of disagreement.
+    contingency = {}
+    for subfamily, cluster_id in zip(wheel_labels, emerged_labels):
+        key = (str(subfamily), int(cluster_id))
+        contingency[key] = contingency.get(key, 0) + 1
+    contingency_rows = [
+        {"wheel": subfamily, "emerged": cluster_id, "count": count}
+        for (subfamily, cluster_id), count in contingency.items()
+    ]
+
     return {
-        "fine_cluster": fine_labels.astype(np.int16),
+        "wheel_label": wheel_labels,
+        "emerged_cluster": emerged_labels.astype(np.int16),
         "x": coords[:, 0].astype(np.float32),
         "y": coords[:, 1].astype(np.float32),
-        "fine_meta": fine_meta,
+        "wheel_meta": wheel_meta,
+        "emerged_meta": emerged_meta,
         "family_labels": FAMILY_LABELS,
+        "contingency": contingency_rows,
     }
 
 

@@ -56,6 +56,38 @@
   .map-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
   .map-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
   .hover-label { font-size: 13px; color: var(--muted); }
+  .view-hint { font-size: 12px; letter-spacing: 0.02em; color: var(--faint); }
+
+  .locate-row { display: flex; gap: 8px; align-items: center; }
+  .locate-input {
+    flex: 1; min-width: 0; padding: 10px 15px; border: 1px solid var(--input-rule); border-radius: 999px;
+    background: transparent; font-family: inherit; font-weight: 300; font-size: 13px; color: var(--ink); outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .locate-input:focus { border-color: var(--accent); }
+  .locate-input::placeholder { color: var(--faint); }
+  .locate-btn {
+    padding: 10px 18px; border: none; border-radius: 999px; cursor: pointer; font-family: inherit;
+    font-weight: 400; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+    background: var(--accent); color: var(--on-accent); transition: opacity 0.2s ease;
+  }
+  .locate-btn:disabled { opacity: 0.6; cursor: default; }
+  .locate-results {
+    display: flex; flex-direction: column; max-height: 200px; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
+  }
+  .locate-results::-webkit-scrollbar { width: 4px; }
+  .locate-results::-webkit-scrollbar-track { background: transparent; }
+  .locate-results::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 999px; }
+  .locate-results::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+  .locate-result {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 9px 10px; border-radius: 9px; cursor: pointer; font-size: 13px; transition: background 0.15s ease;
+  }
+  .locate-result:hover { background: var(--rule); }
+  .locate-result .lr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .locate-result .lr-brand { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+  .locate-result .lr-sim { font-size: 12px; color: var(--accent); white-space: nowrap; }
   .map-wrap { position: relative; height: 480px; border-radius: 18px; overflow: hidden; transition: background 0.35s ease; background: var(--panel); border: 1px solid var(--rule); }
   .map-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
   .map-canvas.dragging { cursor: grabbing; }
@@ -156,7 +188,8 @@
     font-size: 22px; line-height: 1; cursor: pointer; padding: 4px;
   }
   .detail-close:hover { color: var(--ink); }
-  .detail-family { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint); margin-bottom: 10px; }
+  .detail-family { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint); }
+  .detail-emerged { font-size: 11px; letter-spacing: 0.06em; color: var(--faint); margin-top: 3px; margin-bottom: 10px; }
   .detail-perfume { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 400; font-size: 28px; line-height: 1.15; }
   .detail-brand { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
   .detail-notes { font-size: 14px; line-height: 1.6; color: var(--muted); margin-top: 18px; }
@@ -178,6 +211,25 @@
   .info-list-more { font-size: 12px; color: var(--faint); padding: 10px 0 0; }
   .wheel-img { display: block; width: 100%; border-radius: 10px; margin: 2px 0 16px; }
   .wheel-link { display: block; margin-top: 10px; }
+
+  .compare-section { display: flex; flex-direction: column; gap: 18px; margin-top: 8px; }
+  .compare-head { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+  .compare-title { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 300; font-size: 30px; }
+  .compare-copy { font-size: 14px; line-height: 1.65; color: var(--muted); margin: 0; }
+  .compare-chart-wrap { position: relative; display: flex; justify-content: center; }
+  .compare-svg { width: 100%; max-width: 640px; height: auto; }
+  .compare-arc { cursor: pointer; transition: opacity 0.15s ease; }
+  .compare-link { fill: none; transition: opacity 0.2s ease, stroke-width 0.2s ease; }
+  .compare-link-hit { fill: none; stroke: transparent; stroke-width: 10px; cursor: pointer; }
+  .compare-node-label { font-family: Jost, Helvetica, Arial, sans-serif; font-size: 10.5px; fill: var(--muted); pointer-events: none; transition: fill 0.15s ease; user-select: none; }
+  .compare-node-label.active { fill: var(--ink); }
+  .compare-tooltip {
+    position: absolute; pointer-events: none; font-size: 12px; letter-spacing: 0.02em; color: var(--label-ink);
+    background: var(--label-bg); padding: 6px 11px; border-radius: 10px; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    opacity: 0; transition: opacity 0.1s ease; white-space: nowrap; transform: translate(-50%, -130%);
+  }
+  .compare-tooltip.visible { opacity: 1; }
+  .compare-hint { font-size: 12px; color: var(--faint); text-align: center; }
 </style>
 </head>
 <body>
@@ -192,6 +244,7 @@
   <div class="detail-card">
     <button type="button" class="detail-close" id="detail-close" aria-label="Close">&times;</button>
     <div class="detail-family" id="detail-family"></div>
+    <div class="detail-emerged" id="detail-emerged"></div>
     <div class="detail-perfume" id="detail-perfume"></div>
     <div class="detail-brand" id="detail-brand"></div>
     <div class="detail-notes" id="detail-notes"></div>
@@ -234,6 +287,13 @@
           <div class="eyebrow">The map</div>
           <div class="hover-label" id="hover-label">hover a dot</div>
         </div>
+        <div class="locate-row">
+          <input type="text" id="locate-input" class="locate-input" placeholder="Find a fragrance by name or notes" />
+          <button type="button" id="locate-btn" class="locate-btn">Locate</button>
+        </div>
+        <div id="locate-results" class="locate-results"></div>
+        <div id="locate-error" class="error-text"></div>
+        <div class="view-hint">Grouped by how fragrances' notes actually cluster -- see "Wheel vs. data" below for how that compares to the classic wheel.</div>
         <div class="map-wrap" id="map-wrap">
           <canvas class="map-canvas" id="map-canvas"></canvas>
           <div class="map-labels" id="map-labels"></div>
@@ -269,6 +329,20 @@
       </div>
 
     </div>
+
+    <div class="compare-section">
+      <div class="compare-head">
+        <div class="eyebrow">Wheel vs. data</div>
+        <div class="compare-title">Where do they agree?</div>
+        <p class="compare-copy">The classic Fragrance Wheel sorts every fragrance into one of 14 named subfamilies by its notes. The map's "emerged clusters" instead group fragrances by how their notes actually sit near each other, with no knowledge of the wheel at all. Each ribbon below is real fragrances flowing from a wheel subfamily (left) into an emerged cluster (right) -- a subfamily that funnels into one or two thick ribbons is a real, data-backed neighborhood; one that fans out thin across many is mostly a shared-keyword label, not a neighborhood the data agrees with.</p>
+      </div>
+      <div class="compare-chart-wrap">
+        <svg class="compare-svg" id="compare-svg" viewBox="0 0 640 640" role="img" aria-label="Diagram comparing Fragrance Wheel subfamilies to emerged clusters"></svg>
+        <div class="compare-tooltip" id="compare-tooltip"></div>
+      </div>
+      <div class="compare-hint" id="compare-hint">Hover a subfamily or cluster to trace where its fragrances actually go.</div>
+    </div>
+
   </div>
 </div>
 
@@ -278,9 +352,15 @@
 
   // Matches build.py's FAMILY_LABELS -- the 4 main families of the 2010
   // revision of the Fragrance Wheel (Oriental was renamed to Amber).
+  // Order: Floral, Amber, Woody, Fresh. Validated against the dataviz
+  // skill's CVD/contrast checks for both themes (node scripts/validate_palette.js)
+  // -- the original muted "spa" tones failed the chroma floor and CVD
+  // separation checks badly (ΔE 4.5-6.2, well under the 15 normal-vision
+  // floor), which matters now that these colors also carry identity in the
+  // wheel-vs-emerged comparison diagram below, not just map dots.
   const FAMILY_ORDER = ["floral", "amber", "woody", "fresh"];
-  const SPA_LIGHT = ["#c0a2a8", "#c2a07e", "#a89478", "#9aab94"];
-  const SPA_DARK = ["#c2a0ab", "#c7a681", "#ab977a", "#8fae92"];
+  const SPA_LIGHT = ["#c15b7f", "#d98a2e", "#9c5a1e", "#3f8f5f"];
+  const SPA_DARK = ["#cc6f8e", "#ba8a1e", "#8f5320", "#4f9e6d"];
 
   function familyColor(familyId, dark) {
     const idx = FAMILY_ORDER.indexOf(familyId);
@@ -406,6 +486,7 @@
     themeLabel.textContent = dark ? "Dark" : "Light";
     if (clusterState) drawDots(hoverIndex);
     renderLegend();
+    if (clusterState) buildCompareChart();
   }
 
   function initTheme() {
@@ -589,6 +670,18 @@
     updateZoomControls();
   }
 
+  // The map itself only shows the emerged view -- unsupervised KMeans on
+  // the note vectors with no knowledge of the wheel, each cluster
+  // auto-labeled by its own top notes -- since a wheel subfamily has ~no
+  // spatial cohesion here (a "Water" fragrance isn't any more likely to sit
+  // near another "Water" fragrance than a random one; see README). That
+  // comparison instead lives in the wheel-vs-emerged diagram below, which
+  // is built for exactly this relationship. Dots are still colored by the
+  // wheel's main family regardless. `mode` is kept as a variable (rather
+  // than inlining "emerged" everywhere) so the rendering functions below
+  // stay agnostic to which grouping drives them.
+  const mode = "emerged";
+
   function buildClusterState(data) {
     const points = data.points;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -599,37 +692,54 @@
       if (p.y > maxY) maxY = p.y;
     });
 
-    const fineLabelById = {};
-    data.fine_clusters.forEach((fc) => { fineLabelById[fc.id] = fc; });
-    // Denormalize each point's subfamily name onto itself so the hot
-    // per-frame draw loop never has to do a fineLabelById lookup.
-    points.forEach((p) => { p.label = fineLabelById[p.fine].label; });
+    const wheelMetaById = {};
+    data.wheel_subfamilies.forEach((s) => { wheelMetaById[s.id] = s; });
+    const emergedMetaById = {};
+    data.emerged_clusters.forEach((c) => { emergedMetaById[c.id] = c; });
 
-    // The map is fine-clustered well beyond the 14 named subfamilies (see
-    // build.py) so that rare subfamilies -- aquatic, fruity, dry-wood notes
-    // -- get a cluster that genuinely matches their notes instead of being
-    // forced onto whatever's left over. Several raw clusters can therefore
-    // share the same subfamily name (a broad family like Floral naturally
-    // covers more of them than a narrow one). For the map's label pills we
-    // group back down to one pill per unique NAME, positioned at the
-    // member-weighted centroid across every cluster sharing that name, so
-    // the map still shows a clean ~14 labels instead of dozens.
-    const labelGroups = {};
+    // Denormalize each point's label for both views onto itself so the hot
+    // per-frame draw loop never has to look either up.
     points.forEach((p) => {
-      if (!labelGroups[p.label]) {
-        labelGroups[p.label] = { family: p.family, x: 0, y: 0, count: 0 };
-      }
-      const g = labelGroups[p.label];
-      g.x += p.x;
-      g.y += p.y;
-      g.count += 1;
-    });
-    Object.keys(labelGroups).forEach((label) => {
-      labelGroups[label].x /= labelGroups[label].count;
-      labelGroups[label].y /= labelGroups[label].count;
+      p.wheelLabel = wheelMetaById[p.wheel].label;
+      p.emergedLabel = emergedMetaById[p.emerged].label;
     });
 
-    return { points, families: data.families, bounds: { minX, maxX, minY, maxY }, labelGroups, fineLabelById };
+    // One group per unique value of the given point field, positioned at
+    // the member-weighted centroid. For "wheel" this is already exactly the
+    // 14 subfamilies (direct per-fragrance classification, no merging
+    // needed); for "emerged" it's the EMERGED_CLUSTERS raw KMeans clusters.
+    // Each group's "family" is its plurality wheel-family among members --
+    // for a wheel group that's unanimous (100%); for an emerged cluster
+    // it's a "closest color", since an emerged cluster can genuinely span
+    // several wheel families -- seeing that mix *is* the comparison.
+    function buildGroups(key, labelField) {
+      const groups = {};
+      points.forEach((p) => {
+        const id = String(p[key]);
+        if (!groups[id]) groups[id] = { label: p[labelField], x: 0, y: 0, count: 0, familyCounts: {} };
+        const g = groups[id];
+        g.x += p.x;
+        g.y += p.y;
+        g.count += 1;
+        g.familyCounts[p.family] = (g.familyCounts[p.family] || 0) + 1;
+      });
+      Object.values(groups).forEach((g) => {
+        g.x /= g.count;
+        g.y /= g.count;
+        g.family = Object.keys(g.familyCounts).reduce((a, b) => (g.familyCounts[a] >= g.familyCounts[b] ? a : b));
+      });
+      return groups;
+    }
+
+    const views = {
+      emerged: { key: "emerged", groups: buildGroups("emerged", "emergedLabel"), metaById: emergedMetaById },
+    };
+
+    return {
+      points, families: data.families, bounds: { minX, maxX, minY, maxY }, views,
+      wheelSubfamilies: data.wheel_subfamilies, emergedClusters: data.emerged_clusters,
+      contingency: data.contingency,
+    };
   }
 
   let hoveredFamily = null;
@@ -713,10 +823,11 @@
     const rect = mapCanvas.getBoundingClientRect();
     const w = rect.width, h = rect.height;
     const margin = 40;
-    const raw = Object.keys(clusterState.labelGroups).map((label) => {
-      const g = clusterState.labelGroups[label];
+    const view = clusterState.views[mode];
+    const raw = Object.keys(view.groups).map((id) => {
+      const g = view.groups[id];
       const pos = projectScreen(clusterState, g.x, g.y, w, h);
-      return { id: label, text: label, family: g.family, x: pos.x, y: pos.y };
+      return { id, text: g.label, family: g.family, x: pos.x, y: pos.y };
     }).filter((l) => l.x > -margin && l.x < w + margin && l.y > -margin && l.y < h + margin);
     const placed = declutterLabels(raw, w, h);
     mapLabels.innerHTML = placed.map((l) => {
@@ -737,18 +848,21 @@
         updateLabelActiveStates();
       });
       el.addEventListener("click", () => {
-        const label = el.dataset.label;
-        const g = clusterState.labelGroups[label];
+        const id = el.dataset.label;
+        const activeView = clusterState.views[mode];
+        const g = activeView.groups[id];
         if (!g) return;
-        // Clicking a label always opens its subfamily popup, even when a
-        // dot sits directly underneath -- the popup's member list is how
-        // you reach dots packed too tightly under a pill to click directly.
-        // A subfamily can span several underlying clusters (see
-        // buildClusterState), so gather members from all of them.
+        // Clicking a label always opens its popup, even when a dot sits
+        // directly underneath -- the popup's member list is how you reach
+        // dots packed too tightly under a pill to click directly.
         const members = clusterState.points
-          .filter((p) => p.label === label)
+          .filter((p) => String(p[activeView.key]) === id)
           .sort((a, b) => a.perfume.localeCompare(b.perfume));
-        openInfo(familyLabel(g.family), label, SUBFAMILY_INFO[label], members);
+        const body = mode === "wheel"
+          ? SUBFAMILY_INFO[g.label]
+          : `A data-driven cluster of ${g.count.toLocaleString()} fragrances -- unlike the wheel's subfamilies, this comes straight from KMeans on the note vectors with no reference to the classic wheel, so it's named after its own strongest notes rather than a wheel category.`;
+        const eyebrow = mode === "wheel" ? familyLabel(g.family) : "Emerged cluster";
+        openInfo(eyebrow, g.label, body, members);
       });
     });
   }
@@ -778,7 +892,7 @@
       const pos = projectScreen(state, p.x, p.y, w, h);
       if (pos.x < -4 || pos.x > w + 4 || pos.y < -4 || pos.y > h + 4) return;
       const dimmed = hoveredLabel !== null
-        ? p.label !== hoveredLabel
+        ? String(p[clusterState.views[mode].key]) !== hoveredLabel
         : (hoveredFamily && p.family !== hoveredFamily);
       const baseAlpha = dark ? 0.72 : 0.6;
       ctx.beginPath();
@@ -816,10 +930,11 @@
   // so a click on a pill can't be lost to a mid-interaction rebuild.
   function updateLabelActiveStates() {
     if (!clusterState) return;
+    const groups = clusterState.views[mode].groups;
     mapLabels.querySelectorAll(".cluster-pill").forEach((el) => {
-      const label = el.dataset.label;
-      const g = clusterState.labelGroups[label];
-      const isActive = label === hoveredLabel || (hoveredFamily && g && g.family === hoveredFamily);
+      const id = el.dataset.label;
+      const g = groups[id];
+      const isActive = id === hoveredLabel || (hoveredFamily && g && g.family === hoveredFamily);
       el.classList.toggle("active", isActive);
     });
   }
@@ -852,7 +967,7 @@
     }
     if (best >= 0) {
       const p = state.points[best];
-      hoverLabelEl.textContent = p.label || "";
+      hoverLabelEl.textContent = (mode === "wheel" ? p.wheelLabel : p.emergedLabel) || "";
       pointTooltip.innerHTML = `<div class="tt-brand">${p.brand}</div>${p.perfume}`;
       pointTooltip.style.left = `${mx}px`;
       pointTooltip.style.top = `${my}px`;
@@ -1008,6 +1123,7 @@
   // --- Fragrance detail modal ---
   const detailOverlay = document.getElementById("detail-overlay");
   const detailFamily = document.getElementById("detail-family");
+  const detailEmerged = document.getElementById("detail-emerged");
   const detailPerfume = document.getElementById("detail-perfume");
   const detailBrand = document.getElementById("detail-brand");
   const detailNotes = document.getElementById("detail-notes");
@@ -1017,23 +1133,33 @@
 
   let selectedPoint = null;
 
-  // Matches from /analyze don't carry a cluster id (only sampled /clusters
-  // points do) -- best-effort look one up by identity so the family eyebrow
-  // still shows when the fragrance happens to be in the sampled set.
-  function findFineForFragrance(point) {
-    if (point.fine !== undefined) return point.fine;
-    if (!clusterState) return undefined;
+  // Points sampled onto the map already carry denormalized wheelLabel/
+  // emergedLabel (see buildClusterState). Points from /analyze, /locate,
+  // /collection, /wishlist instead carry the raw wheel subfamily name and
+  // emerged cluster id (serve.py's _point_for_index, looked up against the
+  // *full* corpus) -- resolve the cluster id to its label text. Only a
+  // fragrance with no cluster data at all (shouldn't normally happen) falls
+  // back to an identity search against the map's sampled points.
+  function findPointLabels(point) {
+    if (point.wheelLabel !== undefined && point.emergedLabel !== undefined) {
+      return { wheel: point.wheelLabel, emerged: point.emergedLabel };
+    }
+    if (point.wheel !== undefined && point.emerged !== undefined && clusterState) {
+      const emergedMeta = clusterState.emergedClusters.find((c) => c.id === point.emerged);
+      return { wheel: point.wheel, emerged: emergedMeta ? emergedMeta.label : `Cluster ${point.emerged}` };
+    }
+    if (!clusterState) return null;
     const hit = clusterState.points.find(
       (p) => p.brand === point.brand && p.perfume === point.perfume && p.notes === point.notes
     );
-    return hit ? hit.fine : undefined;
+    return hit ? { wheel: hit.wheelLabel, emerged: hit.emergedLabel } : null;
   }
 
   function openDetail(point, opts) {
     selectedPoint = point;
-    const fineId = findFineForFragrance(point);
-    const fine = fineId !== undefined ? clusterState.fineLabelById[fineId] : null;
-    detailFamily.textContent = fine ? fine.label : "";
+    const labels = findPointLabels(point);
+    detailFamily.textContent = labels ? labels.wheel : "";
+    detailEmerged.textContent = labels ? `Data cluster: ${labels.emerged}` : "";
     detailPerfume.textContent = point.perfume;
     detailBrand.textContent = point.brand;
     detailNotes.textContent = point.notes;
@@ -1063,6 +1189,135 @@
     analyze();
   });
 
+  // --- Find a fragrance on the map, by name or by notes ---
+  const locateInput = document.getElementById("locate-input");
+  const locateBtn = document.getElementById("locate-btn");
+  const locateResultsEl = document.getElementById("locate-results");
+  const locateError = document.getElementById("locate-error");
+  let lastLocateResults = [];
+
+  function renderLocateResults(data) {
+    lastLocateResults = data.results;
+    if (!data.results.length) {
+      locateResultsEl.innerHTML = '<p class="muted-text">No fragrance found -- try different notes.</p>';
+      return;
+    }
+    locateResultsEl.innerHTML = data.results.map((r, i) => `
+      <div class="locate-result" data-idx="${i}">
+        <div class="lr-name">
+          <div class="lr-brand">${r.brand}</div>
+          ${r.perfume}
+        </div>
+        ${data.mode === "notes" ? `<div class="lr-sim">${(r.similarity * 100).toFixed(0)}%</div>` : ""}
+      </div>
+    `).join("");
+    locateResultsEl.querySelectorAll(".locate-result").forEach((el) => {
+      el.addEventListener("click", () => {
+        locateOnMap(lastLocateResults[Number(el.dataset.idx)]);
+        locateRequestId++; // discard any in-flight search so a late response can't repopulate this
+        locateResultsEl.innerHTML = "";
+      });
+    });
+  }
+
+  // requestId guards against out-of-order responses: if the user keeps
+  // typing, an older in-flight request's response is discarded rather than
+  // clobbering the newer keystroke's results when it happens to resolve
+  // later (fetches don't necessarily resolve in the order they were sent).
+  let locateRequestId = 0;
+
+  async function performLocateSearch(query) {
+    const requestId = ++locateRequestId;
+    try {
+      const res = await fetch(`${API_BASE}/locate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      if (requestId !== locateRequestId) return;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail ? JSON.stringify(body.detail) : `Request failed (${res.status})`);
+      }
+      locateError.textContent = "";
+      renderLocateResults(await res.json());
+    } catch (err) {
+      if (requestId !== locateRequestId) return;
+      locateError.textContent = err.message || "Search failed.";
+    }
+  }
+
+  let locateDebounceTimer;
+  locateInput.addEventListener("input", () => {
+    clearTimeout(locateDebounceTimer);
+    const query = locateInput.value.trim();
+    locateError.textContent = "";
+    if (!query) {
+      locateRequestId++; // discard any in-flight search
+      locateResultsEl.innerHTML = "";
+      return;
+    }
+    // Debounced so fast typing doesn't fire a request per keystroke; old
+    // results stay on screen until the next batch arrives, rather than
+    // flashing empty between them.
+    locateDebounceTimer = setTimeout(() => performLocateSearch(query), 220);
+  });
+
+  function runLocate() {
+    clearTimeout(locateDebounceTimer);
+    const query = locateInput.value.trim();
+    if (!query) {
+      locateError.textContent = "Type a fragrance name or some notes.";
+      locateResultsEl.innerHTML = "";
+      return;
+    }
+    performLocateSearch(query);
+  }
+
+  // Pans/zooms the map to center the found fragrance and rings it, exactly
+  // like a hovered dot -- reusing hoverIndex for that ring since it's the
+  // same visual mechanism, just driven by a search result instead of the
+  // mouse. The fragrance may not be one of the ~4,000 points sampled onto
+  // the map, so splice it in as its own point (by identity, so relocating
+  // the same fragrance twice doesn't add duplicates) rather than requiring
+  // it to already be there.
+  function locateOnMap(point) {
+    if (!clusterState) return;
+    let idx = clusterState.points.findIndex(
+      (p) => p.brand === point.brand && p.perfume === point.perfume && p.notes === point.notes
+    );
+    if (idx === -1) {
+      const emergedMeta = clusterState.emergedClusters.find((c) => c.id === point.emerged);
+      clusterState.points.push({
+        x: point.x, y: point.y, wheel: point.wheel, emerged: point.emerged, family: point.family,
+        brand: point.brand, perfume: point.perfume, notes: point.notes,
+        wheelLabel: point.wheel, emergedLabel: emergedMeta ? emergedMeta.label : `Cluster ${point.emerged}`,
+      });
+      idx = clusterState.points.length - 1;
+    }
+    const p = clusterState.points[idx];
+    const rect = mapCanvas.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    const targetScale = Math.max(view.scale, 2.4);
+    const base = project(clusterState, p.x, p.y, w, h);
+    view.scale = targetScale;
+    view.tx = w / 2 - base.x * targetScale;
+    view.ty = h / 2 - base.y * targetScale;
+    clampPan(w, h);
+    hoverIndex = idx;
+    redrawMap(hoverIndex);
+    updateZoomControls();
+    closeInfo();
+    openDetail(p);
+    notesInput.value = p.notes;
+    analyze();
+  }
+
+  locateBtn.addEventListener("click", runLocate);
+  locateInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") runLocate();
+  });
+
   let mapResizeTimer;
   window.addEventListener("resize", () => {
     clearTimeout(mapResizeTimer);
@@ -1072,6 +1327,244 @@
       redrawMap(hoverIndex);
     }, 120);
   });
+
+  // --- Wheel vs. emerged-cluster comparison diagram ---
+  // A circular alluvial/chord diagram: wheel subfamilies occupy the left
+  // arc, emerged clusters the right arc, and a ribbon's width is how many
+  // fragrances flow from one to the other. Built by hand in SVG rather than
+  // a charting library, consistent with the rest of the page.
+  const CMP = {
+    cx: 320, cy: 320, rInner: 232, rOuter: 244, rLabel: 254,
+    wheelRange: [190, 350], emergedRange: [10, 170],
+    gapDeg: 1.4, minNodeDeg: 2.2,
+  };
+  const compareSvg = document.getElementById("compare-svg");
+  const compareTooltip = document.getElementById("compare-tooltip");
+  const compareHint = document.getElementById("compare-hint");
+  let hoveredCompare = null; // { side: "wheel"|"emerged", id: string }
+
+  // angleDeg: 0 = top, increasing clockwise.
+  function cmpPolar(r, angleDeg) {
+    const rad = (angleDeg - 90) * Math.PI / 180;
+    return { x: CMP.cx + r * Math.cos(rad), y: CMP.cy + r * Math.sin(rad) };
+  }
+
+  function cmpArcPath(rInner, rOuter, a0, a1) {
+    const large = a1 - a0 > 180 ? 1 : 0;
+    const p1 = cmpPolar(rOuter, a0), p2 = cmpPolar(rOuter, a1);
+    const p3 = cmpPolar(rInner, a1), p4 = cmpPolar(rInner, a0);
+    return `M ${p1.x} ${p1.y} A ${rOuter} ${rOuter} 0 ${large} 1 ${p2.x} ${p2.y} `
+      + `L ${p3.x} ${p3.y} A ${rInner} ${rInner} 0 ${large} 0 ${p4.x} ${p4.y} Z`;
+  }
+
+  // Distributes [angleStart, angleEnd] across `items` proportional to
+  // item.count, with a floor so a rare subfamily still gets a visible,
+  // hoverable arc instead of shrinking to nothing next to Floral or Amber.
+  function cmpLayout(items, angleStart, angleEnd) {
+    const n = items.length;
+    const available = (angleEnd - angleStart) - CMP.gapDeg * n;
+    const total = items.reduce((s, it) => s + it.count, 0) || 1;
+    let widths = items.map((it) => Math.max(CMP.minNodeDeg, (it.count / total) * available));
+    const scale = available / widths.reduce((a, b) => a + b, 0);
+    widths = widths.map((w) => w * scale);
+    let angle = angleStart;
+    return items.map((it, i) => {
+      const a0 = angle, a1 = angle + widths[i];
+      angle = a1 + CMP.gapDeg;
+      return { ...it, a0, a1, mid: (a0 + a1) / 2 };
+    });
+  }
+
+  // Sub-divides a node's own [a0, a1] span among its individual links
+  // (proportional to each link's count), ordered by the counterpart node's
+  // angle so ribbons from the same node cross each other as little as
+  // possible on their way across the circle.
+  function cmpSubdivide(node, links, otherMidById) {
+    const sorted = [...links].sort((a, b) => otherMidById(a) - otherMidById(b));
+    const total = sorted.reduce((s, l) => s + l.count, 0) || 1;
+    let angle = node.a0;
+    const span = node.a1 - node.a0;
+    const out = new Map();
+    sorted.forEach((l) => {
+      const w = (l.count / total) * span;
+      out.set(l, angle + w / 2);
+      angle += w;
+    });
+    return out;
+  }
+
+  function cmpLabelAttrs(angleDeg, r) {
+    const pos = cmpPolar(r, angleDeg);
+    const leftHalf = angleDeg > 90 && angleDeg < 270;
+    const rotate = leftHalf ? angleDeg - 90 + 180 : angleDeg - 90;
+    return { x: pos.x, y: pos.y, rotate, anchor: leftHalf ? "end" : "start" };
+  }
+
+  function cmpShowTooltip(evt, html) {
+    const wrap = compareSvg.parentElement.getBoundingClientRect();
+    compareTooltip.innerHTML = html;
+    compareTooltip.style.left = `${evt.clientX - wrap.left}px`;
+    compareTooltip.style.top = `${evt.clientY - wrap.top}px`;
+    compareTooltip.classList.add("visible");
+  }
+  function cmpHideTooltip() {
+    compareTooltip.classList.remove("visible");
+  }
+
+  // Rebuilding the SVG from scratch on every hover (the first version of
+  // this did) breaks native mouseenter/mouseleave: swapping the DOM element
+  // out from under an already-hovered cursor, with no intervening pointer
+  // move, leaves the browser's hover tracking stale, so a mouseleave the
+  // user expects (moving off the diagram) can silently never fire. Same
+  // class of bug as the map's cluster-pill comment above. The fix here is
+  // the same fix: build every element ONCE with stable listeners, and on
+  // hover only flip attributes (opacity, stroke-width, class) on the
+  // existing nodes -- see updateCompareHighlight.
+  let cmp = null; // { wheelById, emergedById, linkEls: [{l, path, hit}], nodeEls: [{side, id, count, label, arc, text}] }
+
+  function buildCompareChart() {
+    if (!clusterState || !clusterState.contingency || !clusterState.contingency.length) return;
+    const svgNS = "http://www.w3.org/2000/svg";
+    while (compareSvg.firstChild) compareSvg.removeChild(compareSvg.firstChild);
+    hoveredCompare = null;
+
+    const wheelItems = clusterState.wheelSubfamilies.map((s) => ({ id: s.id, label: s.label, family: s.family, count: s.count }));
+    const emergedItems = clusterState.emergedClusters.map((c) => ({ id: String(c.id), label: c.label, count: c.count }));
+    const wheelArcs = cmpLayout(wheelItems, CMP.wheelRange[0], CMP.wheelRange[1]);
+    const emergedArcs = cmpLayout(emergedItems, CMP.emergedRange[0], CMP.emergedRange[1]);
+    const wheelById = {}; wheelArcs.forEach((a) => { wheelById[a.id] = a; });
+    const emergedById = {}; emergedArcs.forEach((a) => { emergedById[String(a.id)] = a; });
+
+    const links = clusterState.contingency
+      .map((row) => ({ wheel: row.wheel, emerged: String(row.emerged), count: row.count }))
+      .filter((l) => wheelById[l.wheel] && emergedById[l.emerged]);
+
+    const wheelLinksById = {}, emergedLinksById = {};
+    links.forEach((l) => {
+      (wheelLinksById[l.wheel] = wheelLinksById[l.wheel] || []).push(l);
+      (emergedLinksById[l.emerged] = emergedLinksById[l.emerged] || []).push(l);
+    });
+    const wheelSub = {}, emergedSub = {};
+    wheelArcs.forEach((node) => {
+      const nodeLinks = wheelLinksById[node.id] || [];
+      const sub = cmpSubdivide(node, nodeLinks, (l) => emergedById[l.emerged].mid);
+      nodeLinks.forEach((l) => { wheelSub[`${l.wheel}|${l.emerged}`] = sub.get(l); });
+    });
+    emergedArcs.forEach((node) => {
+      const nodeLinks = emergedLinksById[String(node.id)] || [];
+      const sub = cmpSubdivide(node, nodeLinks, (l) => wheelById[l.wheel].mid);
+      nodeLinks.forEach((l) => { emergedSub[`${l.wheel}|${l.emerged}`] = sub.get(l); });
+    });
+
+    // Only a *meaningful* share of the wheel subfamily's members is visible
+    // at rest -- otherwise all 14 x 22 combinations render as an
+    // undifferentiated hairball. Every link still exists in the DOM (see
+    // below), just at ~0 opacity, so hovering its node reveals it with no
+    // rebuild -- a scattered subfamily honestly shows its full spread.
+    const maxCount = Math.max(...links.map((l) => l.count), 1);
+    const dark = isDark();
+    const neutral = dark ? "#75796e" : "#a79f92";
+
+    const linksLayer = document.createElementNS(svgNS, "g");
+    const nodesLayer = document.createElementNS(svgNS, "g");
+    const labelsLayer = document.createElementNS(svgNS, "g");
+    const linkEls = [];
+    const nodeEls = [];
+
+    links.forEach((l) => {
+      const a1 = wheelSub[`${l.wheel}|${l.emerged}`];
+      const a2 = emergedSub[`${l.wheel}|${l.emerged}`];
+      if (a1 === undefined || a2 === undefined) return;
+      const p1 = cmpPolar(CMP.rInner, a1);
+      const p2 = cmpPolar(CMP.rInner, a2);
+      const d = `M ${p1.x} ${p1.y} Q ${CMP.cx} ${CMP.cy} ${p2.x} ${p2.y}`;
+      const width = Math.max(0.6, (l.count / maxCount) * 9);
+      const restVisible = l.count >= Math.max(15, 0.03 * wheelById[l.wheel].count);
+
+      const hit = document.createElementNS(svgNS, "path");
+      hit.setAttribute("d", d);
+      hit.setAttribute("class", "compare-link-hit");
+      hit.addEventListener("mouseenter", (e) => {
+        const pct = Math.round((l.count / wheelById[l.wheel].count) * 100);
+        cmpShowTooltip(e, `<div class="tt-brand">${l.count.toLocaleString()} fragrances</div>${wheelById[l.wheel].label} &rarr; ${emergedById[l.emerged].label} (${pct}%)`);
+      });
+      hit.addEventListener("mousemove", (e) => cmpShowTooltip(e, compareTooltip.innerHTML));
+      hit.addEventListener("mouseleave", cmpHideTooltip);
+      linksLayer.appendChild(hit);
+
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", d);
+      path.setAttribute("class", "compare-link");
+      path.setAttribute("stroke", familyColor(wheelById[l.wheel].family, dark));
+      path.setAttribute("stroke-width", width);
+      path.setAttribute("opacity", restVisible ? 0.4 : 0.03);
+      linksLayer.appendChild(path);
+
+      linkEls.push({ l, path, width, restVisible });
+    });
+
+    function addNode(node, side, fill) {
+      const arc = document.createElementNS(svgNS, "path");
+      arc.setAttribute("d", cmpArcPath(CMP.rInner, CMP.rOuter, node.a0, node.a1));
+      arc.setAttribute("class", "compare-arc");
+      arc.setAttribute("fill", fill);
+      arc.addEventListener("mouseenter", () => { hoveredCompare = { side, id: String(node.id) }; updateCompareHighlight(); });
+      arc.addEventListener("mouseleave", () => { hoveredCompare = null; updateCompareHighlight(); });
+      arc.addEventListener("mousemove", (e) => cmpShowTooltip(e, `<div class="tt-brand">${node.count.toLocaleString()} fragrances</div>${node.label}`));
+      arc.addEventListener("mouseleave", cmpHideTooltip);
+      nodesLayer.appendChild(arc);
+
+      const { x, y, rotate, anchor } = cmpLabelAttrs(node.mid, CMP.rLabel);
+      const text = document.createElementNS(svgNS, "text");
+      text.setAttribute("x", x);
+      text.setAttribute("y", y);
+      text.setAttribute("transform", `rotate(${rotate} ${x} ${y})`);
+      text.setAttribute("text-anchor", anchor);
+      text.setAttribute("dominant-baseline", "middle");
+      text.setAttribute("class", "compare-node-label");
+      text.textContent = node.label;
+      text.addEventListener("mouseenter", () => { hoveredCompare = { side, id: String(node.id) }; updateCompareHighlight(); });
+      text.addEventListener("mouseleave", () => { hoveredCompare = null; updateCompareHighlight(); });
+      text.style.pointerEvents = "auto";
+      text.style.cursor = "pointer";
+      labelsLayer.appendChild(text);
+
+      nodeEls.push({ side, id: String(node.id), arc, text });
+    }
+
+    wheelArcs.forEach((node) => addNode(node, "wheel", familyColor(node.family, dark)));
+    emergedArcs.forEach((node) => addNode(node, "emerged", neutral));
+
+    compareSvg.appendChild(linksLayer);
+    compareSvg.appendChild(nodesLayer);
+    compareSvg.appendChild(labelsLayer);
+
+    cmp = { linkEls, nodeEls };
+    updateCompareHighlight();
+  }
+
+  // Pure attribute updates on the already-built elements -- no DOM
+  // add/remove, so it's always safe to call from a hover handler without
+  // disturbing the browser's own mouseenter/mouseleave tracking.
+  function updateCompareHighlight() {
+    if (!cmp) return;
+    cmp.linkEls.forEach(({ l, path, width, restVisible }) => {
+      const active = hoveredCompare && (
+        (hoveredCompare.side === "wheel" && hoveredCompare.id === l.wheel)
+        || (hoveredCompare.side === "emerged" && hoveredCompare.id === l.emerged)
+      );
+      path.setAttribute("stroke-width", active ? width + 1 : width);
+      path.setAttribute("opacity", hoveredCompare ? (active ? 0.85 : 0.03) : (restVisible ? 0.4 : 0.03));
+    });
+    cmp.nodeEls.forEach(({ side, id, arc, text }) => {
+      const active = hoveredCompare && hoveredCompare.side === side && hoveredCompare.id === id;
+      arc.setAttribute("opacity", !hoveredCompare || active ? 1 : 0.35);
+      text.classList.toggle("active", !!active);
+    });
+    compareHint.textContent = hoveredCompare
+      ? "Hover elsewhere, or move off the diagram, to reset."
+      : "Hover a subfamily or cluster to trace where its fragrances actually go.";
+  }
 
   async function loadClusters() {
     mapError.textContent = "";
@@ -1083,6 +1576,7 @@
       renderLegend();
       redrawMap(-1);
       updateZoomControls();
+      buildCompareChart();
     } catch (err) {
       mapError.textContent = err.message || "Failed to load the map.";
     }

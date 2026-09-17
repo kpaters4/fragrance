@@ -1,11 +1,19 @@
-"""Sweeps KMeans cluster counts over the corpus's note vectors and plots
-inertia and silhouette score vs. K, to pick a data-supported cluster count
-for the /clusters map instead of hand-fixing it to the 14 named Fragrance
-Wheel subfamilies.
+"""Sweeps KMeans cluster counts over the corpus's 2D map layout (the same
+(x, y) t-SNE coordinates the /clusters map displays -- not the pre-embedding
+note vectors) and plots inertia and silhouette score vs. K, to pick a
+data-supported cluster count for the map's "emerged clusters" view.
+
+Clustering the 2D layout directly -- rather than the original 1133-dim note
+vectors -- is deliberate: it guarantees an "emerged cluster" is always a
+real, contiguous region on the map, since there's no second space (KMeans
+optimizing one thing, t-SNE optimizing another) left for them to disagree
+about. See README for the fuller rationale.
 
 Run once: python scripts/elbow_analysis.py
-Writes docs/elbow-graph.png and prints the detected elbow K plus the K with
-the best (sampled) silhouette score.
+Requires pipeline.joblib to already have `clusters.x`/`clusters.y` computed
+(reuses them rather than re-running t-SNE). Writes docs/elbow-graph.png and
+prints the detected elbow K plus the K with the best (sampled) silhouette
+score.
 """
 import sys
 from pathlib import Path
@@ -19,7 +27,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import normalize
 
 from build import ARTIFACT_PATH
 from pipeline_def import NoteFingerprint  # noqa: F401 -- required for joblib unpickling
@@ -58,18 +65,17 @@ def detect_elbow(ks, inertias):
 
 def main():
     bundle = joblib.load(ARTIFACT_PATH)
-    matrix = bundle["corpus_matrix"]
-    norm_matrix = normalize(matrix)
+    coords = np.column_stack([bundle["clusters"]["x"], bundle["clusters"]["y"]]).astype(np.float64)
 
     inertias = []
     silhouettes = []
     for k in K_RANGE:
         print(f"Fitting KMeans k={k}...")
         kmeans = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=10)
-        labels = kmeans.fit_predict(norm_matrix)
+        labels = kmeans.fit_predict(coords)
         inertias.append(kmeans.inertia_)
         sil = silhouette_score(
-            norm_matrix, labels,
+            coords, labels,
             sample_size=SILHOUETTE_SAMPLE_SIZE, random_state=RANDOM_STATE,
         )
         silhouettes.append(sil)
@@ -100,7 +106,7 @@ def main():
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
 
-    plt.title("KMeans elbow curve + silhouette score -- corpus note vectors")
+    plt.title("KMeans elbow curve + silhouette score -- 2D map layout")
     fig.tight_layout()
     plt.savefig(OUT_PATH, dpi=150)
     print(f"Wrote {OUT_PATH}")
