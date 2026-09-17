@@ -92,6 +92,29 @@
   .map-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
   .map-canvas.dragging { cursor: grabbing; }
   .map-labels, .map-tooltip { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  /* Deliberately not a wheel-family color -- it needs to read as "the
+     thing you searched for", not blend in as just another dot, especially
+     in a dense cluster of the same family. */
+  .locate-marker {
+    --locate-color: #4fa8ff;
+    position: absolute; top: 0; left: 0; width: 14px; height: 14px; margin: -7px;
+    pointer-events: none; opacity: 0; transition: opacity 0.2s ease; z-index: 1;
+  }
+  .locate-marker.visible { opacity: 1; }
+  .locate-marker::before, .locate-marker::after {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+  }
+  .locate-marker::before { background: var(--locate-color); box-shadow: 0 0 0 2px var(--panel); }
+  .locate-marker::after {
+    border: 2px solid var(--locate-color); animation: locate-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  @keyframes locate-ping {
+    0% { transform: scale(1); opacity: 0.9; }
+    100% { transform: scale(2.8); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .locate-marker::after { animation: none; opacity: 0.5; }
+  }
   .map-controls {
     position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px;
     z-index: 2;
@@ -298,6 +321,7 @@
           <canvas class="map-canvas" id="map-canvas"></canvas>
           <div class="map-labels" id="map-labels"></div>
           <div class="map-tooltip"><div class="point-tooltip" id="point-tooltip"></div></div>
+          <div class="locate-marker" id="locate-marker"></div>
           <div class="map-controls" id="map-controls">
             <button type="button" class="map-ctrl-btn" id="zoom-in" aria-label="Zoom in">+</button>
             <button type="button" class="map-ctrl-btn" id="zoom-out" aria-label="Zoom out">&minus;</button>
@@ -589,6 +613,7 @@
   const mapWrap = document.getElementById("map-wrap");
   const mapLabels = document.getElementById("map-labels");
   const pointTooltip = document.getElementById("point-tooltip");
+  const locateMarker = document.getElementById("locate-marker");
   const hoverLabelEl = document.getElementById("hover-label");
   const legendEl = document.getElementById("legend");
   const mapError = document.getElementById("map-error");
@@ -596,6 +621,24 @@
   let clusterState = null;
   let hoverIndex = -1;
   let hoverRAF = null;
+  // Separate from hoverIndex -- this one marks "the fragrance you searched
+  // for" (see locateOnMap) and needs to stay visible/findable without the
+  // mouse anywhere near it, so it gets its own persistent, animated marker
+  // instead of reusing the transient mouse-hover ring.
+  let locatedIndex = -1;
+
+  function updateLocateMarker() {
+    if (!clusterState || locatedIndex < 0 || !clusterState.points[locatedIndex]) {
+      locateMarker.classList.remove("visible");
+      return;
+    }
+    const rect = mapCanvas.getBoundingClientRect();
+    const p = clusterState.points[locatedIndex];
+    const pos = projectScreen(clusterState, p.x, p.y, rect.width, rect.height);
+    locateMarker.style.left = `${pos.x}px`;
+    locateMarker.style.top = `${pos.y}px`;
+    locateMarker.classList.add("visible");
+  }
 
   function hexToRgba(hex, alpha) {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -668,6 +711,34 @@
     view = { scale: 1, tx: 0, ty: 0 };
     redrawMap(hoverIndex);
     updateZoomControls();
+  }
+
+  // Eases the view to a target scale/pan over `duration` ms instead of
+  // instantly jump-cutting there, so the eye can follow the map to
+  // wherever a located fragrance actually is rather than re-orienting
+  // itself in a suddenly-different view.
+  let viewAnimFrame = null;
+  function animateViewTo(targetScale, targetTx, targetTy, duration = 500) {
+    if (viewAnimFrame) cancelAnimationFrame(viewAnimFrame);
+    const startScale = view.scale, startTx = view.tx, startTy = view.ty;
+    const startTime = performance.now();
+    const rect = mapCanvas.getBoundingClientRect();
+    function step(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      view.scale = startScale + (targetScale - startScale) * eased;
+      view.tx = startTx + (targetTx - startTx) * eased;
+      view.ty = startTy + (targetTy - startTy) * eased;
+      clampPan(rect.width, rect.height);
+      redrawMap(hoverIndex);
+      if (t < 1) {
+        viewAnimFrame = requestAnimationFrame(step);
+      } else {
+        viewAnimFrame = null;
+        updateZoomControls();
+      }
+    }
+    viewAnimFrame = requestAnimationFrame(step);
   }
 
   // The map itself only shows the emerged view -- unsupervised KMeans on
@@ -917,6 +988,8 @@
       ctx.fillStyle = color;
       ctx.fill();
     }
+
+    updateLocateMarker();
   }
 
   // Full redraw: dots + repositioning the label pills. Only needed when
@@ -1276,15 +1349,17 @@
     performLocateSearch(query);
   }
 
-  // Pans/zooms the map to center the found fragrance and rings it, exactly
-  // like a hovered dot -- reusing hoverIndex for that ring since it's the
-  // same visual mechanism, just driven by a search result instead of the
-  // mouse. The fragrance may not be one of the ~4,000 points sampled onto
-  // the map, so splice it in as its own point (by identity, so relocating
-  // the same fragrance twice doesn't add duplicates) rather than requiring
-  // it to already be there. Deliberately doesn't open the detail popup --
-  // the notes autofill + analysis below already surfaces everything about
-  // it; the popup stays reserved for clicking an actual dot on the map.
+  // Eases the map to center the found fragrance and marks it with the
+  // pulsing locate-marker (see updateLocateMarker) -- a dedicated marker
+  // rather than the mouse-hover ring, since the mouse isn't necessarily
+  // anywhere near it and a same-colored ring can get lost in a dense
+  // cluster. The fragrance may not be one of the ~4,000 points sampled
+  // onto the map, so splice it in as its own point (by identity, so
+  // relocating the same fragrance twice doesn't add duplicates) rather
+  // than requiring it to already be there. Deliberately doesn't open the
+  // detail popup -- the notes autofill + analysis below already surfaces
+  // everything about it; the popup stays reserved for clicking an actual
+  // dot on the map.
   function locateOnMap(point) {
     if (!clusterState) return;
     let idx = clusterState.points.findIndex(
@@ -1304,13 +1379,8 @@
     const w = rect.width, h = rect.height;
     const targetScale = Math.max(view.scale, 2.4);
     const base = project(clusterState, p.x, p.y, w, h);
-    view.scale = targetScale;
-    view.tx = w / 2 - base.x * targetScale;
-    view.ty = h / 2 - base.y * targetScale;
-    clampPan(w, h);
-    hoverIndex = idx;
-    redrawMap(hoverIndex);
-    updateZoomControls();
+    locatedIndex = idx;
+    animateViewTo(targetScale, w / 2 - base.x * targetScale, h / 2 - base.y * targetScale);
     closeInfo();
     notesInput.value = p.notes;
     analyze();
@@ -1345,6 +1415,19 @@
   const compareTooltip = document.getElementById("compare-tooltip");
   const compareHint = document.getElementById("compare-hint");
   let hoveredCompare = null; // { side: "wheel"|"emerged", id: string }
+  // Clicking a node pins the highlight so it survives the mouse moving off
+  // it -- lets you click a subfamily, then move the cursor along its
+  // ribbons to read their individual tooltips without losing the
+  // isolation. Takes priority over hoveredCompare whenever set; cleared by
+  // clicking the same node again or clicking outside the diagram.
+  let pinnedCompare = null;
+
+  function toggleComparePin(side, id) {
+    pinnedCompare = (pinnedCompare && pinnedCompare.side === side && pinnedCompare.id === id)
+      ? null
+      : { side, id };
+    updateCompareHighlight();
+  }
 
   // angleDeg: 0 = top, increasing clockwise.
   function cmpPolar(r, angleDeg) {
@@ -1430,6 +1513,7 @@
     const svgNS = "http://www.w3.org/2000/svg";
     while (compareSvg.firstChild) compareSvg.removeChild(compareSvg.firstChild);
     hoveredCompare = null;
+    pinnedCompare = null;
 
     const wheelItems = clusterState.wheelSubfamilies.map((s) => ({ id: s.id, label: s.label, family: s.family, count: s.count }));
     const emergedItems = clusterState.emergedClusters.map((c) => ({ id: String(c.id), label: c.label, count: c.count }));
@@ -1515,6 +1599,7 @@
       arc.addEventListener("mouseleave", () => { hoveredCompare = null; updateCompareHighlight(); });
       arc.addEventListener("mousemove", (e) => cmpShowTooltip(e, `<div class="tt-brand">${node.count.toLocaleString()} fragrances</div>${node.label}`));
       arc.addEventListener("mouseleave", cmpHideTooltip);
+      arc.addEventListener("click", (e) => { e.stopPropagation(); toggleComparePin(side, String(node.id)); });
       nodesLayer.appendChild(arc);
 
       const { x, y, rotate, anchor } = cmpLabelAttrs(node.mid, CMP.rLabel);
@@ -1528,6 +1613,7 @@
       text.textContent = node.label;
       text.addEventListener("mouseenter", () => { hoveredCompare = { side, id: String(node.id) }; updateCompareHighlight(); });
       text.addEventListener("mouseleave", () => { hoveredCompare = null; updateCompareHighlight(); });
+      text.addEventListener("click", (e) => { e.stopPropagation(); toggleComparePin(side, String(node.id)); });
       text.style.pointerEvents = "auto";
       text.style.cursor = "pointer";
       labelsLayer.appendChild(text);
@@ -1551,23 +1637,37 @@
   // disturbing the browser's own mouseenter/mouseleave tracking.
   function updateCompareHighlight() {
     if (!cmp) return;
+    const current = pinnedCompare || hoveredCompare;
     cmp.linkEls.forEach(({ l, path, width, restVisible }) => {
-      const active = hoveredCompare && (
-        (hoveredCompare.side === "wheel" && hoveredCompare.id === l.wheel)
-        || (hoveredCompare.side === "emerged" && hoveredCompare.id === l.emerged)
+      const active = current && (
+        (current.side === "wheel" && current.id === l.wheel)
+        || (current.side === "emerged" && current.id === l.emerged)
       );
       path.setAttribute("stroke-width", active ? width + 1 : width);
-      path.setAttribute("opacity", hoveredCompare ? (active ? 0.85 : 0.03) : (restVisible ? 0.4 : 0.03));
+      path.setAttribute("opacity", current ? (active ? 0.85 : 0.03) : (restVisible ? 0.4 : 0.03));
     });
     cmp.nodeEls.forEach(({ side, id, arc, text }) => {
-      const active = hoveredCompare && hoveredCompare.side === side && hoveredCompare.id === id;
-      arc.setAttribute("opacity", !hoveredCompare || active ? 1 : 0.35);
+      const active = current && current.side === side && current.id === id;
+      arc.setAttribute("opacity", !current || active ? 1 : 0.35);
       text.classList.toggle("active", !!active);
     });
-    compareHint.textContent = hoveredCompare
-      ? "Hover elsewhere, or move off the diagram, to reset."
-      : "Hover a subfamily or cluster to trace where its fragrances actually go.";
+    if (pinnedCompare) {
+      compareHint.textContent = "Pinned -- click it again, or click outside the diagram, to reset.";
+    } else if (hoveredCompare) {
+      compareHint.textContent = "Click a subfamily or cluster to pin it while you explore its ribbons.";
+    } else {
+      compareHint.textContent = "Hover a subfamily or cluster to trace where its fragrances actually go.";
+    }
   }
+
+  // Clicking a node pins/toggles the highlight (see toggleComparePin); a
+  // click anywhere outside the diagram clears the pin. Node clicks call
+  // stopPropagation so they don't also trigger this as "outside."
+  document.addEventListener("click", () => {
+    if (!pinnedCompare) return;
+    pinnedCompare = null;
+    updateCompareHighlight();
+  });
 
   async function loadClusters() {
     mapError.textContent = "";
