@@ -67,6 +67,12 @@ Composed after `NoteFingerprint` (`Pipeline([("fingerprint", NoteFingerprint()),
 
 A Postman collection covering all six endpoints (including the invalid-input cases) is in `postman/scent_fingerprint.postman_collection.json`; run it with [Newman](https://github.com/postmanlabs/newman) via `newman run postman/scent_fingerprint.postman_collection.json`.
 
+Run against the deployed Modal URL:
+
+| `POST /analyze` — valid (200) | `POST /analyze` — invalid, empty notes (422) |
+|---|---|
+| ![valid /analyze response](postman/screenshots/analyze_valid_200.jpg) | ![invalid /analyze response](postman/screenshots/analyze_invalid_422.jpg) |
+
 ## Code layout
 
 - `pipeline_def.py` — the `NoteFingerprint` and `NicheScorer` models (see above).
