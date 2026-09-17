@@ -99,14 +99,37 @@ FAMILY_LABELS = {
 }
 
 
-def _classify_subfamily(top_notes):
+def _score_subfamilies(top_notes):
     scores = {subfamily: 0.0 for subfamily in SUBFAMILY_KEYWORDS}
     for rank, note in enumerate(top_notes):
         weight = 1.0 / (rank + 1)
         for subfamily, keywords in SUBFAMILY_KEYWORDS.items():
             if note in keywords:
                 scores[subfamily] += weight
-    return max(scores, key=scores.get)
+    return scores
+
+
+def _assign_subfamilies(cluster_top_notes):
+    """Greedily assigns each cluster to a distinct Fragrance Wheel subfamily,
+    claiming the strongest-scoring (cluster, subfamily) pairs first. With
+    N_FINE_CLUSTERS == len(SUBFAMILY_KEYWORDS) this yields a full one-to-one
+    mapping, so every named subfamily gets used exactly once instead of a few
+    generic ones (like "Floral") independently winning several clusters' votes.
+    """
+    scores = {cid: _score_subfamilies(notes) for cid, notes in cluster_top_notes.items()}
+    candidates = sorted(
+        ((scores[cid][sub], cid, sub) for cid in scores for sub in SUBFAMILY_KEYWORDS),
+        key=lambda t: t[0],
+        reverse=True,
+    )
+    assigned = {}
+    claimed = set()
+    for _, cid, sub in candidates:
+        if cid in assigned or sub in claimed:
+            continue
+        assigned[cid] = sub
+        claimed.add(sub)
+    return assigned
 
 
 def compute_clusters(pipeline, corpus_matrix):
@@ -125,12 +148,17 @@ def compute_clusters(pipeline, corpus_matrix):
     kmeans = KMeans(n_clusters=N_FINE_CLUSTERS, random_state=RANDOM_STATE, n_init=10)
     fine_labels = kmeans.fit_predict(norm_matrix)
 
-    fine_meta = {}
+    cluster_top_notes = {}
     for cluster_id in range(N_FINE_CLUSTERS):
         center = kmeans.cluster_centers_[cluster_id]
         top_idx = np.argsort(center)[::-1][:6]
-        top_notes = [inv_vocab[i] for i in top_idx if center[i] > 0]
-        subfamily = _classify_subfamily(top_notes)
+        cluster_top_notes[cluster_id] = [inv_vocab[i] for i in top_idx if center[i] > 0]
+
+    subfamily_by_cluster = _assign_subfamilies(cluster_top_notes)
+
+    fine_meta = {}
+    for cluster_id in range(N_FINE_CLUSTERS):
+        subfamily = subfamily_by_cluster[cluster_id]
         fine_meta[cluster_id] = {
             "label": subfamily,
             "family": SUBFAMILY_TO_MAIN[subfamily],

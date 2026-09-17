@@ -62,7 +62,9 @@
   .cluster-pill {
     position: absolute; transform: translate(-50%, -50%); font-size: 12px; letter-spacing: 0.06em;
     padding: 4px 9px; border-radius: 999px; white-space: nowrap; color: var(--label-ink); background: var(--label-bg);
+    pointer-events: auto; cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
   }
+  .cluster-pill:hover, .cluster-pill.active { background: var(--accent); color: var(--on-accent); }
   .point-tooltip {
     position: absolute; transform: translate(-50%, -135%); font-size: 12px; letter-spacing: 0.02em;
     padding: 6px 11px; border-radius: 10px; white-space: nowrap; color: var(--label-ink); background: var(--label-bg);
@@ -425,6 +427,7 @@
     legendEl.querySelectorAll(".item").forEach((el) => {
       el.addEventListener("mouseenter", () => {
         hoveredFamily = el.dataset.family;
+        hoveredFine = null;
         el.classList.add("active");
         drawMap(hoverIndex);
       });
@@ -479,6 +482,8 @@
     return boxes;
   }
 
+  let hoveredFine = null;
+
   function renderClusterLabels() {
     if (!clusterState) return;
     const rect = mapCanvas.getBoundingClientRect();
@@ -487,12 +492,24 @@
       const meta = clusterState.fineLabelById[id];
       const c = clusterState.fineCentroids[id];
       const pos = project(clusterState, c.x, c.y, w, h);
-      return meta ? { text: meta.label, x: pos.x, y: pos.y } : null;
+      return meta ? { id, text: meta.label, x: pos.x, y: pos.y } : null;
     }).filter(Boolean);
     const placed = declutterLabels(raw, w, h);
     mapLabels.innerHTML = placed.map((l) =>
-      `<span class="cluster-pill" style="left:${l.x}px; top:${l.y}px;">${l.text}</span>`
+      `<span class="cluster-pill${l.id === hoveredFine ? " active" : ""}" data-fine="${l.id}" style="left:${l.x}px; top:${l.y}px;">${l.text}</span>`
     ).join("");
+    mapLabels.querySelectorAll(".cluster-pill").forEach((el) => {
+      el.addEventListener("mouseenter", () => {
+        hoveredFine = el.dataset.fine;
+        hoveredFamily = null;
+        renderLegend();
+        drawMap(hoverIndex);
+      });
+      el.addEventListener("mouseleave", () => {
+        hoveredFine = null;
+        drawMap(hoverIndex);
+      });
+    });
   }
 
   function drawMap(highlightIndex) {
@@ -514,7 +531,9 @@
     state.points.forEach((p, i) => {
       if (i === highlightIndex) return;
       const pos = project(state, p.x, p.y, w, h);
-      const dimmed = hoveredFamily && p.family !== hoveredFamily;
+      const dimmed = hoveredFine !== null
+        ? String(p.fine) !== hoveredFine
+        : (hoveredFamily && p.family !== hoveredFamily);
       const baseAlpha = dark ? 0.72 : 0.6;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, dimmed ? 1.8 : 2.2, 0, Math.PI * 2);
