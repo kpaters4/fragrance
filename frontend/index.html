@@ -12,13 +12,13 @@
     --bg: #f3f0ea; --panel: #fbfaf7; --ink: #3a3833; --muted: #857f74; --faint: #a79f92;
     --rule: #e6e1d7; --input-rule: #cfc8bb; --accent: #6d7d6b; --on-accent: #f8f7f3;
     --label-ink: #6d675d; --label-bg: rgba(251, 250, 247, 0.82); --track-bg: #e0dad0; --knob-left: 2px;
-    --error: #a3554c;
+    --error: #a3554c; --locate-color: #3f6fb0;
   }
   :root[data-theme="dark"] {
     --bg: #1b1d1b; --panel: #232622; --ink: #e9e7e1; --muted: #9aa096; --faint: #75796e;
     --rule: #32362f; --input-rule: #3f443c; --accent: #9db59a; --on-accent: #1b1d1b;
     --label-ink: #c3c8bd; --label-bg: rgba(27, 29, 27, 0.78); --track-bg: #343a32; --knob-left: 18px;
-    --error: #d99a92;
+    --error: #d99a92; --locate-color: #6f93d1;
   }
   * { box-sizing: border-box; }
   body {
@@ -94,26 +94,31 @@
   .map-labels, .map-tooltip { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
   /* Deliberately not a wheel-family color -- it needs to read as "the
      thing you searched for", not blend in as just another dot, especially
-     in a dense cluster of the same family. */
+     in a dense cluster of the same family. Echoes the canvas's own
+     hover-highlight anatomy (panel-fill ring + center dot) so it feels
+     like part of the map rather than a generic UI pin, with a soft
+     breathing halo behind it instead of a sharp radar-style ping. */
   .locate-marker {
-    --locate-color: #4fa8ff;
-    position: absolute; top: 0; left: 0; width: 14px; height: 14px; margin: -7px;
-    pointer-events: none; opacity: 0; transition: opacity 0.2s ease; z-index: 1;
+    position: absolute; top: 0; left: 0; width: 11px; height: 11px; margin: -5.5px;
+    border-radius: 50%; background: var(--panel); border: 2px solid var(--locate-color);
+    pointer-events: none; opacity: 0; transition: opacity 0.25s ease; z-index: 1;
   }
   .locate-marker.visible { opacity: 1; }
-  .locate-marker::before, .locate-marker::after {
-    content: ""; position: absolute; inset: 0; border-radius: 50%;
+  .locate-marker::before {
+    content: ""; position: absolute; inset: -9px; border-radius: 50%; z-index: -1;
+    background: var(--locate-color); opacity: 0.18;
+    animation: locate-breathe 2.6s ease-in-out infinite;
   }
-  .locate-marker::before { background: var(--locate-color); box-shadow: 0 0 0 2px var(--panel); }
   .locate-marker::after {
-    border: 2px solid var(--locate-color); animation: locate-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+    content: ""; position: absolute; top: 50%; left: 50%; width: 3px; height: 3px;
+    margin: -1.5px; border-radius: 50%; background: var(--locate-color);
   }
-  @keyframes locate-ping {
-    0% { transform: scale(1); opacity: 0.9; }
-    100% { transform: scale(2.8); opacity: 0; }
+  @keyframes locate-breathe {
+    0%, 100% { transform: scale(0.75); opacity: 0.22; }
+    50% { transform: scale(1.2); opacity: 0.04; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .locate-marker::after { animation: none; opacity: 0.5; }
+    .locate-marker::before { animation: none; opacity: 0.12; }
   }
   .map-controls {
     position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px;
@@ -1587,7 +1592,7 @@
       path.setAttribute("opacity", restVisible ? 0.4 : 0.03);
       linksLayer.appendChild(path);
 
-      linkEls.push({ l, path, width, restVisible });
+      linkEls.push({ l, path, hit, width, restVisible });
     });
 
     function addNode(node, side, fill) {
@@ -1643,13 +1648,15 @@
     // still highlights whatever's under the cursor, and only falls back to
     // the pinned one when you're not actively hovering anything.
     const current = hoveredCompare || pinnedCompare;
-    cmp.linkEls.forEach(({ l, path, width, restVisible }) => {
+    cmp.linkEls.forEach(({ l, path, hit, width, restVisible }) => {
       const active = current && (
         (current.side === "wheel" && current.id === l.wheel)
         || (current.side === "emerged" && current.id === l.emerged)
       );
       path.setAttribute("stroke-width", active ? width + 1 : width);
       path.setAttribute("opacity", current ? (active ? 0.85 : 0.03) : (restVisible ? 0.4 : 0.03));
+      hit.style.pointerEvents = current && !active ? "none" : "auto";
+      if (current && !active) cmpHideTooltip();
     });
     cmp.nodeEls.forEach(({ side, id, arc, text }) => {
       const active = current && current.side === side && current.id === id;
